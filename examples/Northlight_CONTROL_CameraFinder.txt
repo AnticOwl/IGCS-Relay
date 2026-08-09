@@ -1,0 +1,37 @@
+[ENABLE]
+
+aobscanmodule(ControlPMWriter,Control_DX12.exe,0F 11 8E 80 00 00 00 0F 28)
+alloc(newmem,$1000,ControlPMWriter)
+
+label(return)
+label(pControlPM)
+
+newmem:
+  push rax
+  lea rax,[rsi+00000080]
+  mov [pControlPM],rax
+  pop rax
+
+  movups [rsi+00000080],xmm1
+  jmp return
+
+pControlPM:
+  dq 0
+
+ControlPMWriter:
+  jmp newmem
+  nop 2
+
+return:
+
+registersymbol(ControlPMWriter)
+registersymbol(pControlPM)
+
+[DISABLE]
+
+ControlPMWriter:
+  db 0F 11 8E 80 00 00 00
+
+unregistersymbol(ControlPMWriter)
+unregistersymbol(pControlPM)
+dealloc(newmem)

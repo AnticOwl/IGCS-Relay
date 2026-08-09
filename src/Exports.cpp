@@ -1,0 +1,220 @@
+#include "Protocol.h"
+#include "NamedPipeServer.h"
+#include "BridgeState.h"
+#include <format>
+#include <mutex>
+#include <cmath>
+
+#ifdef _M_IX86
+#pragma comment(linker, "/EXPORT:IGCS_StartScreenshotSession=_IGCS_StartScreenshotSession")
+#pragma comment(linker, "/EXPORT:IGCS_EndScreenshotSession=_IGCS_EndScreenshotSession")
+#pragma comment(linker, "/EXPORT:IGCS_MoveCameraPanorama=_IGCS_MoveCameraPanorama")
+#pragma comment(linker, "/EXPORT:IGCS_MoveCameraMultishot=_IGCS_MoveCameraMultishot")
+#endif
+
+
+extern "C" __declspec(dllexport) bridge::SessionStartCode __cdecl IGCS_StartScreenshotSession(std::uint8_t type) {
+    auto &s = bridge::state();
+    if (!s.providerConnected || !s.cameraValid) return bridge::SessionStartCode::CameraFeatureNotAvailable;
+    if (!s.camera.cameraEnabled) return bridge::SessionStartCode::CameraNotEnabled;
+    if (s.sessionActive) return bridge::SessionStartCode::AlreadySessionActive;
+
+    const bool needsFreshRawBase =
+        s.cameraInputMode == bridge::CameraInputMode::RawEuler &&
+        (s.engineProfile == bridge::EngineProfile::IdTech7 ||
+         s.engineProfile == bridge::EngineProfile::Northlight);
+
+    {
+        std::scoped_lock lock(s.mutex);
+        if (needsFreshRawBase) {
+            s.sessionBaseValid = false;
+            s.sessionBaseRefreshPending = true;
+        } else if (s.cameraInputMode == bridge::CameraInputMode::RawEuler) {
+            s.sessionBaseRawCamera = s.rawCamera;
+            s.sessionBaseValid = true;
+        }
+    }
+
+    if (!bridge::sendLine(std::format("SESSION_BEGIN|{}", type))) {
+        {
+            std::scoped_lock lock(s.mutex);
+            s.sessionBaseValid = false;
+            s.sessionBaseRefreshPending = false;
+        }
+        return bridge::SessionStartCode::UnknownError;
+    }
+
+    if (needsFreshRawBase) {
+        std::unique_lock lock(s.mutex);
+        const bool gotFreshBase = s.sessionBaseCv.wait_for(
+            lock,
+            std::chrono::milliseconds(250),
+            [&s] {
+                return s.sessionBaseValid &&
+                       !s.sessionBaseRefreshPending;
+            });
+
+        if (!gotFreshBase) {
+            s.sessionBaseValid = false;
+            s.sessionBaseRefreshPending = false;
+            lock.unlock();
+            bridge::sendLine("SESSION_END");
+            return bridge::SessionStartCode::UnknownError;
+        }
+    }
+
+    s.sessionActive = true;
+    return bridge::SessionStartCode::AllOk;
+}
+extern "C" __declspec(dllexport) void __cdecl IGCS_EndScreenshotSession() {
+    auto &s = bridge::state();
+    bridge::sendLine("SESSION_END");
+    s.sessionActive = false;
+    {
+        std::scoped_lock lock(s.mutex);
+        s.sessionBaseValid = false;
+        s.sessionBaseRefreshPending = false;
+    }
+    s.sessionBaseCv.notify_all();
+}
+extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraPanorama(float stepAngle) {
+    auto &s = bridge::state();
+    if (s.cameraInputMode == bridge::CameraInputMode::RawEuler) {
+        const float rawDelta = bridge::radiansToRawAngle(stepAngle, s.engineProfile);
+        bridge::sendLine(std::format("ROTATE_YAW_RAW|{:.9f}", rawDelta));
+        return;
+    }
+    bridge::sendLine(std::format("MOVE_PANORAMA|{:.9f}", stepAngle));
+}
+extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr, float ud, float fov, bool fromStart) {
+    auto &s = bridge::state();
+
+    if (s.cameraInputMode == bridge::CameraInputMode::RawEuler && s.sessionBaseValid) {
+        bridge::RawCameraData base{};
+
+        {
+            std::scoped_lock lock(s.mutex);
+            base = s.sessionBaseRawCamera;
+        }
+
+        // -----------------------------------------------------------------
+        // DOOM Eternal / idTech 7
+        //
+        // Keep this path deliberately separate from the generic RAW path.
+        // It mirrors the previously validated CE Lua implementation exactly:
+        //
+        //   lr = stepLR * 2.0
+        //   ud = stepUD * 2.0
+        //   pitch = radians(-rawPitch)
+        //   yaw   = radians(90 - rawYaw)
+        //   roll  = radians(rawRoll)
+        //
+        // Then:
+        //   position = base + Right * lr + Up * ud
+        // -----------------------------------------------------------------
+        if (s.engineProfile == bridge::EngineProfile::IdTech7) {
+            constexpr float kPi = 3.14159265358979323846f;
+            constexpr float kDegToRad = kPi / 180.0f;
+            constexpr float kDoomBokehScale = 2.0f;
+
+            const float scaledLr = lr * kDoomBokehScale;
+            const float scaledUd = ud * kDoomBokehScale;
+
+            const float pitch = -base.pitch * kDegToRad;
+            const float yaw = (90.0f - base.yaw) * kDegToRad;
+            const float roll = base.roll * kDegToRad;
+
+            const float cp = std::cos(pitch);
+            const float sp = std::sin(pitch);
+            const float cy = std::cos(yaw);
+            const float sy = std::sin(yaw);
+            const float cr = std::cos(roll);
+            const float sr = std::sin(roll);
+
+            const float rightX = cy * sr * sp - cr * sy;
+            const float rightY = sy * sr * sp + cr * cy;
+            const float rightZ = -sr * cp;
+
+            const float upX = -cr * cy * sp - sr * sy;
+            const float upY = -cr * sy * sp + sr * cy;
+            const float upZ = cr * cp;
+
+            const float x = base.x + rightX * scaledLr + upX * scaledUd;
+            const float y = base.y + rightY * scaledLr + upY * scaledUd;
+            const float z = base.z + rightZ * scaledLr + upZ * scaledUd;
+
+            bridge::sendLine(std::format(
+                "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+                x, y, z, fov, fromStart ? 1 : 0));
+            return;
+        }
+
+        // -----------------------------------------------------------------
+        // Northlight / CONTROL
+        //
+        // Validated legacy CONTROL Lua behavior:
+        //   raw Pitch/Yaw/Roll are radians
+        //   Forward zero = +X
+        //   Right zero   = +Y
+        //   Up zero      = +Z
+        //   lr = stepLR * 0.007
+        //   ud = stepUD * 0.007
+        //
+        // buildCameraToolsData() reconstructs the Northlight basis and
+        // handles the validated positive-roll convention.
+        // -----------------------------------------------------------------
+        if (s.engineProfile == bridge::EngineProfile::Northlight) {
+            constexpr float kNorthlightDofScale = 0.007f;
+
+            const CameraToolsData basis =
+                bridge::buildCameraToolsData(base, s.engineProfile);
+
+            const float scaledLr = lr * kNorthlightDofScale;
+            const float scaledUd = ud * kNorthlightDofScale;
+
+            const float x =
+                base.x +
+                basis.rotationMatrixRightVector.values[0] * scaledLr +
+                basis.rotationMatrixUpVector.values[0] * scaledUd;
+            const float y =
+                base.y +
+                basis.rotationMatrixRightVector.values[1] * scaledLr +
+                basis.rotationMatrixUpVector.values[1] * scaledUd;
+            const float z =
+                base.z +
+                basis.rotationMatrixRightVector.values[2] * scaledLr +
+                basis.rotationMatrixUpVector.values[2] * scaledUd;
+
+            bridge::sendLine(std::format(
+                "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+                x, y, z, fov, fromStart ? 1 : 0));
+            return;
+        }
+
+        // Generic RAW path for UE2.5 / UE3 / UE4. Unchanged.
+        const CameraToolsData basis =
+            bridge::buildCameraToolsData(base, s.engineProfile);
+
+        const float x =
+            base.x +
+            basis.rotationMatrixRightVector.values[0] * lr +
+            basis.rotationMatrixUpVector.values[0] * ud;
+        const float y =
+            base.y +
+            basis.rotationMatrixRightVector.values[1] * lr +
+            basis.rotationMatrixUpVector.values[1] * ud;
+        const float z =
+            base.z +
+            basis.rotationMatrixRightVector.values[2] * lr +
+            basis.rotationMatrixUpVector.values[2] * ud;
+
+        bridge::sendLine(std::format(
+            "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+            x, y, z, fov, fromStart ? 1 : 0));
+        return;
+    }
+
+    bridge::sendLine(std::format(
+        "MOVE_MULTISHOT|{:.9f}|{:.9f}|{:.9f}|{}",
+        lr, ud, fov, fromStart ? 1 : 0));
+}

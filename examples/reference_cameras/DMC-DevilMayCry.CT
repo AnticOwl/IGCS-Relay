@@ -1,0 +1,1539 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="46">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>37</ID>
+      <Description>"----------------------------------------------"</Description>
+      <Color>FFFF80</Color>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>35</ID>
+      <Description>"- Dmc: Devil May Cry Camera for Steam"</Description>
+      <Color>FFFF80</Color>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>36</ID>
+      <Description>"- Antic Owl"</Description>
+      <Color>FFFF80</Color>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>4027</ID>
+      <Description>"- See Table Extra for info"</Description>
+      <Color>FFFF80</Color>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>34</ID>
+      <Description>"----------------------------------------------"</Description>
+      <Color>FFFF80</Color>
+      <GroupHeader>1</GroupHeader>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>8397</ID>
+      <Description>"Auto Attach To Game"</Description>
+      <Color>0000FF</Color>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>{$lua}
+[ENABLE]
+
+local processName = "DMC-DevilMayCry.exe"
+local function onTimer_Tick(timer)
+  if readInteger(processName) == nil then
+    local processId = getProcessIDFromProcessName(processName)
+    if processId and processId ~= getOpenedProcessID() then
+      openProcess(processId)
+    end
+  end
+end
+local autoAttachTimer = createTimer(getMainForm(), true)
+autoAttachTimer.Interval = 1000
+autoAttachTimer.OnTimer = onTimer_Tick
+
+[DISABLE]
+
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>26229</ID>
+      <Description>"Camera - Leave On"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+
+aobscanmodule(Camera,DMC-DevilMayCry.exe,8D B3 6C 05 00 00) // should be unique
+alloc(newmem,$1000,Camera)
+
+label(code)
+label(return)
+label(pCamera)
+
+newmem:
+mov [pCamera], ebx
+
+code:
+  lea esi,[ebx+0000056C]
+  jmp return
+
+pCamera:
+  dd 0
+
+Camera:
+  jmp newmem
+  nop
+
+return:
+registersymbol(Camera)
+registersymbol(pCamera)
+
+{$lua}
+function getCamBase()
+    local symbolAddress = getAddressSafe("pCamera")
+    if not symbolAddress then return nil end
+
+    local cameraAddress = readInteger(symbolAddress)
+    if not cameraAddress or cameraAddress == 0 then return nil end
+
+    return cameraAddress
+end
+
+function toDegrees(v)
+    if v == nil then return 0 end
+    return (v / 32768) * 180
+end
+
+speedFast  = 3
+speedSlow  = 1
+speedSlow2 = 0.5
+
+function checkKeys()
+    local cam = getCamBase()
+    if not cam then return end
+
+    if getOpenedProcessID() ~= getForegroundProcess() then
+        return
+    end
+
+    local speed = speedFast
+    if isKeyPressed(VK_LCONTROL) then
+        speed = speedSlow
+    elseif isKeyPressed(VK_LMENU) then
+        speed = speedSlow2
+    end
+
+    local pitchI = readInteger(cam + 0x578)
+    local yawI   = readInteger(cam + 0x57C)
+    local rollI  = readInteger(cam + 0x580)
+
+    local x = readFloat(cam + 0x56C)
+    local y = readFloat(cam + 0x570)
+    local z = readFloat(cam + 0x574)
+
+    local fov = readFloat(cam + 0x584)
+
+    if pitchI == nil or yawI == nil or rollI == nil or
+       x == nil or y == nil or z == nil then
+        return
+    end
+
+    local yaw = math.rad(toDegrees(yawI))
+    local siny = math.sin(yaw)
+    local cosy = math.cos(yaw)
+
+    local rotationStep = math.max(1, math.floor(speed * 40))
+    local rollStep = math.max(1, math.floor(speed * 20))
+
+        if isKeyPressed(VK_UP) then
+            writeInteger(cam + 0x578, pitchI + rotationStep)
+        end
+
+        if isKeyPressed(VK_DOWN) then
+            writeInteger(cam + 0x578, pitchI - rotationStep)
+        end
+
+        if isKeyPressed(VK_LEFT) then
+            writeInteger(cam + 0x57C, yawI - rotationStep)
+        end
+
+        if isKeyPressed(VK_RIGHT) then
+            writeInteger(cam + 0x57C, yawI + rotationStep)
+        end
+
+        if isKeyPressed(VK_SUBTRACT) then
+            writeFloat(cam + 0x584, fov - (speed * 0.25))
+        end
+
+        if isKeyPressed(VK_ADD) then
+            writeFloat(cam + 0x584, fov + (speed * 0.25))
+        end
+
+        if isKeyPressed(VK_NUMPAD8) then
+            writeFloat(cam + 0x56C, x + cosy * speed)
+            writeFloat(cam + 0x570, y + siny * speed)
+        end
+
+        if isKeyPressed(VK_NUMPAD5) then
+            writeFloat(cam + 0x56C, x - cosy * speed)
+            writeFloat(cam + 0x570, y - siny * speed)
+        end
+
+        if isKeyPressed(VK_NUMPAD4) then
+            writeFloat(cam + 0x56C, x + math.sin(yaw) * speed)
+            writeFloat(cam + 0x570, y - math.cos(yaw) * speed)
+        end
+
+        if isKeyPressed(VK_NUMPAD6) then
+            writeFloat(cam + 0x56C, x - math.sin(yaw) * speed)
+            writeFloat(cam + 0x570, y + math.cos(yaw) * speed)
+        end
+
+        if isKeyPressed(VK_NUMPAD7) then
+            writeFloat(cam + 0x574, z + speed)
+        end
+
+        if isKeyPressed(VK_NUMPAD9) then
+            writeFloat(cam + 0x574, z - speed)
+        end
+
+        if isKeyPressed(VK_NUMPAD1) then
+            writeInteger(cam + 0x580, rollI - rollStep)
+        end
+
+        if isKeyPressed(VK_NUMPAD3) then
+            writeInteger(cam + 0x580, rollI + rollStep)
+        end
+    end
+
+
+if camTimer then
+    camTimer.destroy()
+end
+
+camTimer = createTimer(nil)
+camTimer.Interval = 10
+camTimer.OnTimer = checkKeys
+{$asm}
+
+[DISABLE]
+
+Camera:
+  db 8D B3 6C 05 00 00
+
+unregistersymbol(*)
+dealloc(*)
+
+</AssemblerScript>
+      <Hotkeys>
+        <Hotkey>
+          <Action>Toggle Activation</Action>
+          <Keys>
+            <Key>34</Key>
+          </Keys>
+          <ID>0</ID>
+        </Hotkey>
+      </Hotkeys>
+      <CheatEntries>
+        <CheatEntry>
+          <ID>26228</ID>
+          <Description>"X"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>Float</VariableType>
+          <Address>[pCamera]+56C</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>26235</ID>
+          <Description>"Y"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>Float</VariableType>
+          <Address>[pCamera]+570</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>26234</ID>
+          <Description>"Z"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>Float</VariableType>
+          <Address>[pCamera]+574</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>26233</ID>
+          <Description>"Pitch"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>4 Bytes</VariableType>
+          <Address>[pCamera]+578</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>26232</ID>
+          <Description>"Yaw"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>4 Bytes</VariableType>
+          <Address>[pCamera]+57C</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>26231</ID>
+          <Description>"Roll"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>4 Bytes</VariableType>
+          <Address>[pCamera]+580</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>26230</ID>
+          <Description>"FOV"</Description>
+          <ShowAsSigned>0</ShowAsSigned>
+          <VariableType>Float</VariableType>
+          <Address>[pCamera]+584</Address>
+        </CheatEntry>
+      </CheatEntries>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>26236</ID>
+      <Description>"IGCS Support"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>{$lua}
+[ENABLE]
+if syntaxcheck then return end
+
+------------------------------------------------------------
+-- IGCSDOF UNIVERSAL RAW PROVIDER v4
+--
+-- Generic Cheat Engine -&gt; IGCSDOF Universal Bridge
+--
+-- NO GAME NAME.
+-- NO CAMERA-BASIS MATH.
+--
+-- Normally you only change:
+--
+--   1. engine
+--   2. cameraSymbol
+--   3. position offsets
+--   4. rotation offsets
+--   5. FOV offset
+--   6. optional cameraLockSymbol
+--   7. optional writer instructions
+--
+-- Supported engine tags:
+--
+--   UE2.5
+--   UE3
+--   UE4
+--   idTech7
+--   Northlight
+--
+-- Engine-specific camera math stays in the bridge.
+------------------------------------------------------------
+
+------------------------------------------------------------
+-- USER CONFIGURATION
+------------------------------------------------------------
+
+local CONFIG = {
+
+  engine = "UE3",
+
+  bases = {
+    position = "pCamera",
+    rotation = "pCamera",
+    fov      = "pCamera"
+  },
+
+  position = {
+    x = 0x56C,
+    y = 0x570,
+    z = 0x574
+  },
+
+  rotation = {
+    pitch = 0x578,
+    yaw   = 0x57C,
+    roll  = 0x580
+  },
+
+  fov = {
+    offset = 0x584
+  },
+
+  cameraLockSymbol = "",
+
+  writers = {
+  },
+
+  restoreHoldMs = 250,
+  cameraIntervalMs = 16
+}
+
+------------------------------------------------------------
+-- END USER CONFIGURATION
+--
+-- STOP EDITING HERE.
+-- Everything below this line is universal provider core.
+------------------------------------------------------------
+
+local CAMERA_PIPE_NAME =
+  "IGCSDOF_ProviderToBridge_v1"
+
+local COMMAND_PIPE_NAME =
+  "IGCSDOF_BridgeToProvider_v1"
+
+local RECONNECT_DELAY_MS = 1000
+
+------------------------------------------------------------
+-- ENGINE PROFILE
+--
+-- IMPORTANT:
+-- This section defines ONLY provider-side memory behavior.
+-- It does not define camera basis math.
+------------------------------------------------------------
+
+local ENGINE_PROFILE = {
+
+  ["UE2.5"] = {
+    rotationType = "integer",
+    forcePointerLock = false,
+    forceWriterLock = false,
+    useRestoreHold = false
+  },
+
+  ["UE3"] = {
+    rotationType = "integer",
+    forcePointerLock = false,
+    forceWriterLock = false,
+    useRestoreHold = false
+  },
+
+  ["UE4"] = {
+    rotationType = "float",
+    forcePointerLock = false,
+    forceWriterLock = false,
+    useRestoreHold = false
+  },
+
+  ["idTech7"] = {
+    rotationType = "float",
+
+    -- Validated behavior:
+    forcePointerLock = true,
+    forceWriterLock = true,
+    useRestoreHold = true
+  },
+
+  ["Northlight"] = {
+    rotationType = "float",
+    forcePointerLock = false,
+    forceWriterLock = false,
+    useRestoreHold = false
+  }
+}
+
+local function getEngineProfile()
+
+  return
+    ENGINE_PROFILE[CONFIG.engine] or
+    ENGINE_PROFILE["UE4"]
+
+end
+
+local function usesIntegerRotator()
+
+  return
+    getEngineProfile().rotationType == "integer"
+
+end
+
+------------------------------------------------------------
+-- GENERATION / STATE
+------------------------------------------------------------
+
+IGCSDOF_PROVIDER_GENERATION =
+  (IGCSDOF_PROVIDER_GENERATION or 0) + 1
+
+local myGeneration =
+  IGCSDOF_PROVIDER_GENERATION
+
+IGCSDOF_PROVIDER_CONTEXTS =
+  IGCSDOF_PROVIDER_CONTEXTS or {}
+
+local ctx = {
+
+  active = true,
+
+  cameraPipe = nil,
+  commandPipe = nil,
+
+  latestCameraLine = nil,
+  cameraSequence = 0,
+
+  sessionActive = false,
+  savedCamera = nil,
+
+  restorePending = false,
+  restoreCamera = nil,
+  restoreStart = 0,
+
+  writersLocked = false
+}
+
+IGCSDOF_PROVIDER_CONTEXTS[myGeneration] = ctx
+
+local unpackFn =
+  table.unpack or unpack
+
+local function isCurrent()
+
+  return
+    ctx.active and
+    IGCSDOF_PROVIDER_GENERATION == myGeneration
+
+end
+
+------------------------------------------------------------
+-- HELPERS
+------------------------------------------------------------
+
+local function safeDestroy(pipe)
+
+  if pipe then
+
+    pcall(function()
+      pipe.destroy()
+    end)
+
+  end
+
+end
+
+local function safeWrite(pipe, line)
+
+  return pcall(function()
+    pipe.writeString(line .. "\n")
+  end)
+
+end
+
+local function splitLine(line)
+
+  local result = {}
+
+  for value in string.gmatch(line, "([^|]+)") do
+    result[#result + 1] = value
+  end
+
+  return result
+
+end
+
+local function roundInteger(value)
+
+  if value &gt;= 0 then
+    return math.floor(value + 0.5)
+  end
+
+  return math.ceil(value - 0.5)
+
+end
+
+local function makeNops(count)
+
+  local result = {}
+
+  for i = 1, count do
+    result[i] = 0x90
+  end
+
+  return result
+
+end
+
+------------------------------------------------------------
+-- CAMERA POINTER
+------------------------------------------------------------
+
+local function resolveBase(kind)
+
+  if not CONFIG.bases then
+    return nil
+  end
+
+  local name = CONFIG.bases[kind]
+
+  if not name or name == "" then
+    return nil
+  end
+
+  ----------------------------------------------------------
+  -- 1. Existing Lua global variable containing an address
+  ----------------------------------------------------------
+
+  local globalValue = rawget(_G, name)
+
+  if type(globalValue) == "number" and globalValue ~= 0 then
+    return globalValue
+  end
+
+  ----------------------------------------------------------
+  -- 2. Existing Lua global function returning an address
+  --
+  -- Example:
+  --   position = "getCamBase"
+  --
+  -- Calling getCamBase() can also populate helper globals
+  -- such as addr1, which may then be used by rotation/FOV.
+  ----------------------------------------------------------
+
+  if type(globalValue) == "function" then
+
+    local ok, address =
+      pcall(globalValue)
+
+    if ok and
+       type(address) == "number" and
+       address ~= 0 then
+
+      return address
+
+    end
+
+    return nil
+  end
+
+  ----------------------------------------------------------
+  -- 3. CE registered symbol containing a pointer
+  ----------------------------------------------------------
+
+  local symbolAddress =
+    getAddressSafe(name)
+
+  if not symbolAddress then
+    return nil
+  end
+
+  local pointerValue =
+    readPointer(symbolAddress)
+
+  if not pointerValue or
+     pointerValue == 0 then
+    return nil
+  end
+
+  return pointerValue
+
+end
+
+------------------------------------------------------------
+-- CAMERA POINTER LOCK
+------------------------------------------------------------
+
+local function setCameraPointerLock(locked)
+
+  if not CONFIG.cameraLockSymbol or
+     CONFIG.cameraLockSymbol == "" then
+
+    return
+
+  end
+
+  local address =
+    getAddressSafe(CONFIG.cameraLockSymbol)
+
+  if not address then
+    return
+  end
+
+  writeBytes(
+    address,
+    locked and 1 or 0
+  )
+
+end
+
+------------------------------------------------------------
+-- RAW ROTATION READ / WRITE
+------------------------------------------------------------
+
+local function readRotation(address)
+
+  if usesIntegerRotator() then
+    return readInteger(address)
+  end
+
+  return readFloat(address)
+
+end
+
+local function writeRotation(address, value)
+
+  if usesIntegerRotator() then
+
+    writeInteger(
+      address,
+      roundInteger(value)
+    )
+
+  else
+
+    writeFloat(
+      address,
+      value
+    )
+
+  end
+
+end
+
+------------------------------------------------------------
+-- CAMERA READ
+------------------------------------------------------------
+
+local function readCamera()
+
+  local posBase = resolveBase("position")
+  local rotBase = resolveBase("rotation")
+  local fovBase = resolveBase("fov")
+
+  if not posBase or not rotBase or not fovBase then
+    return nil
+  end
+
+  local camera = {
+
+    x = readFloat(
+      posBase + CONFIG.position.x
+    ),
+
+    y = readFloat(
+      posBase + CONFIG.position.y
+    ),
+
+    z = readFloat(
+      posBase + CONFIG.position.z
+    ),
+
+    pitch = readRotation(
+      rotBase + CONFIG.rotation.pitch
+    ),
+
+    yaw = readRotation(
+      rotBase + CONFIG.rotation.yaw
+    ),
+
+    roll = readRotation(
+      rotBase + CONFIG.rotation.roll
+    ),
+
+    fov = readFloat(
+      fovBase + CONFIG.fov.offset
+    )
+  }
+
+  if camera.x == nil or
+     camera.y == nil or
+     camera.z == nil or
+     camera.pitch == nil or
+     camera.yaw == nil or
+     camera.roll == nil or
+     camera.fov == nil then
+    return nil
+  end
+
+  return camera
+
+end
+
+------------------------------------------------------------
+-- CAMERA WRITE
+------------------------------------------------------------
+
+local function cloneCamera(camera)
+
+  if not camera then
+    return nil
+  end
+
+  return {
+
+    x = camera.x,
+    y = camera.y,
+    z = camera.z,
+
+    pitch = camera.pitch,
+    yaw = camera.yaw,
+    roll = camera.roll,
+
+    fov = camera.fov
+  }
+
+end
+
+local function writeCamera(camera)
+
+  if not camera then
+    return false
+  end
+
+  local posBase = resolveBase("position")
+  local rotBase = resolveBase("rotation")
+  local fovBase = resolveBase("fov")
+
+  if not posBase or not rotBase or not fovBase then
+    return false
+  end
+
+  writeFloat(
+    posBase + CONFIG.position.x,
+    camera.x
+  )
+
+  writeFloat(
+    posBase + CONFIG.position.y,
+    camera.y
+  )
+
+  writeFloat(
+    posBase + CONFIG.position.z,
+    camera.z
+  )
+
+  writeRotation(
+    rotBase + CONFIG.rotation.pitch,
+    camera.pitch
+  )
+
+  writeRotation(
+    rotBase + CONFIG.rotation.yaw,
+    camera.yaw
+  )
+
+  writeRotation(
+    rotBase + CONFIG.rotation.roll,
+    camera.roll
+  )
+
+  writeFloat(
+    fovBase + CONFIG.fov.offset,
+    camera.fov
+  )
+
+  return true
+
+end
+
+------------------------------------------------------------
+-- CAMERA WRITER LOCK
+------------------------------------------------------------
+
+local function enableWriterLock()
+
+  if ctx.writersLocked then
+    return
+  end
+
+  for _, writer in ipairs(CONFIG.writers or {}) do
+
+    local address =
+      getAddressSafe(writer.address)
+
+    if address and writer.bytes then
+
+      writeBytes(
+        address,
+        unpackFn(
+          makeNops(#writer.bytes)
+        )
+      )
+
+    end
+
+  end
+
+  ctx.writersLocked = true
+
+end
+
+local function disableWriterLock()
+
+  if not ctx.writersLocked then
+    return
+  end
+
+  for _, writer in ipairs(CONFIG.writers or {}) do
+
+    local address =
+      getAddressSafe(writer.address)
+
+    if address and writer.bytes then
+
+      writeBytes(
+        address,
+        unpackFn(writer.bytes)
+      )
+
+    end
+
+  end
+
+  ctx.writersLocked = false
+
+end
+
+------------------------------------------------------------
+-- CAMERA_RAW MESSAGE
+------------------------------------------------------------
+
+local function makeCameraLine()
+
+  local camera =
+    readCamera()
+
+  if not camera then
+    return "CAMERA_INVALID"
+  end
+
+  local locked =
+    ctx.sessionActive or
+    ctx.restorePending
+
+  local rotationFormat =
+    usesIntegerRotator()
+      and "%d|%d|%d"
+      or "%.9f|%.9f|%.9f"
+
+  local format =
+    "CAMERA_RAW|1|1|%d|" ..
+    "%.9f|%.9f|%.9f|" ..
+    rotationFormat ..
+    "|%.9f"
+
+  return string.format(
+
+    format,
+
+    locked and 1 or 0,
+
+    camera.x,
+    camera.y,
+    camera.z,
+
+    camera.pitch,
+    camera.yaw,
+    camera.roll,
+
+    camera.fov
+
+  )
+
+end
+
+------------------------------------------------------------
+-- ENGINE-SPECIFIC PROVIDER LIFECYCLE
+------------------------------------------------------------
+
+local function beginProviderLock()
+
+  ----------------------------------------------------------
+  -- ENGINE-SPECIFIC PROVIDER LIFECYCLE
+  --
+  -- idTech7 is the only current profile that uses the
+  -- validated camera pointer lock + camera writer lock.
+  --
+  -- Leaving the idTech7 writer list populated in CONFIG is
+  -- harmless for UE / Northlight: those addresses are never
+  -- resolved or modified.
+  ----------------------------------------------------------
+
+  if CONFIG.engine == "idTech7" then
+
+    setCameraPointerLock(true)
+    enableWriterLock()
+
+  end
+
+end
+
+local function releaseProviderLock()
+
+  if CONFIG.engine == "idTech7" then
+
+    disableWriterLock()
+    setCameraPointerLock(false)
+
+  end
+
+end
+
+------------------------------------------------------------
+-- SESSION BEGIN
+------------------------------------------------------------
+
+local function startSession()
+
+  if ctx.sessionActive then
+    return
+  end
+
+  local camera =
+    readCamera()
+
+  if not camera then
+    return
+  end
+
+  -- Fresh camera read for every render.
+  ctx.savedCamera =
+    cloneCamera(camera)
+
+  beginProviderLock()
+
+  -- Important for idTech7 and harmless for other profiles:
+  -- re-apply saved values after camera writers are locked.
+  writeCamera(ctx.savedCamera)
+
+  ctx.sessionActive = true
+
+  -- Publish locked=1 immediately.
+  ctx.latestCameraLine =
+    makeCameraLine()
+
+  ctx.cameraSequence =
+    ctx.cameraSequence + 1
+
+end
+
+------------------------------------------------------------
+-- SESSION END
+------------------------------------------------------------
+
+local function finishRestore()
+
+  if ctx.restoreCamera then
+    writeCamera(ctx.restoreCamera)
+  end
+
+  releaseProviderLock()
+
+  ctx.savedCamera = nil
+  ctx.restoreCamera = nil
+
+  ctx.restorePending = false
+  ctx.restoreStart = 0
+
+end
+
+local function endSession()
+
+  local profile =
+    getEngineProfile()
+
+  if ctx.savedCamera then
+
+    ctx.restoreCamera =
+      cloneCamera(ctx.savedCamera)
+
+    writeCamera(ctx.restoreCamera)
+
+  end
+
+  ctx.sessionActive = false
+
+  ----------------------------------------------------------
+  -- idTech7:
+  -- validated 250 ms forced restore before releasing writers.
+  --
+  -- Other engines:
+  -- restore and release immediately unless their profile is
+  -- later configured to use a hold.
+  ----------------------------------------------------------
+
+  if profile.useRestoreHold then
+
+    ctx.restorePending = true
+
+    ctx.restoreStart =
+      getTickCount()
+
+  else
+
+    ctx.restorePending = false
+
+    finishRestore()
+
+  end
+
+end
+
+local function processPendingRestore()
+
+  if not ctx.restorePending then
+    return
+  end
+
+  -- Keep forcing saved camera while writers remain locked.
+  if ctx.restoreCamera then
+    writeCamera(ctx.restoreCamera)
+  end
+
+  if
+    getTickCount() - ctx.restoreStart
+      &lt;
+    (CONFIG.restoreHoldMs or 250)
+  then
+
+    return
+
+  end
+
+  -- Final restore while still locked.
+  finishRestore()
+
+end
+
+------------------------------------------------------------
+-- COMMANDS FROM BRIDGE
+------------------------------------------------------------
+
+local function setPositionRaw(x, y, z, fov)
+
+  local posBase = resolveBase("position")
+
+  if not posBase then
+    return
+  end
+
+  writeFloat(
+    posBase + CONFIG.position.x,
+    x
+  )
+
+  writeFloat(
+    posBase + CONFIG.position.y,
+    y
+  )
+
+  writeFloat(
+    posBase + CONFIG.position.z,
+    z
+  )
+
+end
+
+local function rotateYawRaw(delta)
+
+  local rotBase = resolveBase("rotation")
+
+  if not rotBase then
+    return
+  end
+
+  local address =
+    rotBase + CONFIG.rotation.yaw
+
+  local yaw =
+    readRotation(address) or 0
+
+  writeRotation(
+    address,
+    yaw + delta
+  )
+
+end
+
+local function handleCommand(line)
+
+  if not isCurrent() then
+    return
+  end
+
+  local parts =
+    splitLine(line)
+
+  local command =
+    parts[1]
+
+  if command == "SESSION_BEGIN" then
+
+    startSession()
+
+  elseif command == "SESSION_END" then
+
+    endSession()
+
+  elseif command == "SET_POSITION_RAW" then
+
+    setPositionRaw(
+      tonumber(parts[2]) or 0,
+      tonumber(parts[3]) or 0,
+      tonumber(parts[4]) or 0,
+      tonumber(parts[5]) or 0
+    )
+
+  elseif command == "ROTATE_YAW_RAW" then
+
+    rotateYawRaw(
+      tonumber(parts[2]) or 0
+    )
+
+  end
+
+end
+
+------------------------------------------------------------
+-- PROVIDER -&gt; BRIDGE PIPE
+------------------------------------------------------------
+
+local function cameraSenderWorker()
+
+  local pipe = nil
+
+  local sentSequence = -1
+
+  while isCurrent() do
+
+    if not pipe then
+
+      local ok, candidate =
+        pcall(function()
+
+          return connectToPipe(
+            CAMERA_PIPE_NAME,
+            0
+          )
+
+        end)
+
+      if not isCurrent() then
+
+        if ok and candidate then
+          safeDestroy(candidate)
+        end
+
+        break
+
+      end
+
+      if ok and candidate then
+
+        pipe = candidate
+
+        ctx.cameraPipe = pipe
+
+        sentSequence = -1
+
+        local hello =
+          "HELLO|Protocol=1" ..
+          "|Transport=DualPipe" ..
+          "|Provider=Cheat Engine" ..
+          "|Engine=" .. CONFIG.engine ..
+          "|CameraMode=RAW"
+
+        if not safeWrite(pipe, hello) then
+
+          safeDestroy(pipe)
+
+          pipe = nil
+          ctx.cameraPipe = nil
+
+        end
+
+      else
+
+        sleep(RECONNECT_DELAY_MS)
+
+      end
+
+    end
+
+    if pipe and isCurrent() then
+
+      local sequence =
+        ctx.cameraSequence
+
+      local line =
+        ctx.latestCameraLine
+
+      if line and
+         sequence ~= sentSequence then
+
+        if safeWrite(pipe, line) then
+
+          sentSequence = sequence
+
+        else
+
+          safeDestroy(pipe)
+
+          pipe = nil
+          ctx.cameraPipe = nil
+
+          sleep(RECONNECT_DELAY_MS)
+
+        end
+
+      else
+
+        sleep(2)
+
+      end
+
+    end
+
+  end
+
+  safeDestroy(pipe)
+
+  ctx.cameraPipe = nil
+
+end
+
+------------------------------------------------------------
+-- BRIDGE -&gt; PROVIDER PIPE
+------------------------------------------------------------
+
+local function commandReceiverWorker()
+
+  local pipe = nil
+
+  local pending = ""
+
+  while isCurrent() do
+
+    if not pipe then
+
+      local ok, candidate =
+        pcall(function()
+
+          return connectToPipe(
+            COMMAND_PIPE_NAME,
+            0
+          )
+
+        end)
+
+      if not isCurrent() then
+
+        if ok and candidate then
+          safeDestroy(candidate)
+        end
+
+        break
+
+      end
+
+      if ok and candidate then
+
+        pipe = candidate
+
+        ctx.commandPipe = pipe
+
+        pending = ""
+
+      else
+
+        sleep(RECONNECT_DELAY_MS)
+
+      end
+
+    end
+
+    if pipe and isCurrent() then
+
+      local ok, byte =
+        pcall(function()
+
+          return pipe.readByte()
+
+        end)
+
+      if not ok then
+
+        safeDestroy(pipe)
+
+        pipe = nil
+
+        ctx.commandPipe = nil
+
+        sleep(RECONNECT_DELAY_MS)
+
+      elseif byte ~= nil then
+
+        if byte == 10 then
+
+          local line =
+            pending
+
+          pending = ""
+
+          if line:sub(-1) == "\r" then
+
+            line =
+              line:sub(1, -2)
+
+          end
+
+          if
+            line ~= "" and
+            line:sub(1, 7) ~= "WELCOME"
+          then
+
+            synchronize(function()
+
+              if isCurrent() then
+                handleCommand(line)
+              end
+
+            end)
+
+          end
+
+        else
+
+          pending =
+            pending ..
+            string.char(byte)
+
+        end
+
+      end
+
+    end
+
+  end
+
+  safeDestroy(pipe)
+
+  ctx.commandPipe = nil
+
+end
+
+------------------------------------------------------------
+-- START
+------------------------------------------------------------
+
+if IGCSDOF_PROVIDER_CAMERA_TIMER then
+
+  IGCSDOF_PROVIDER_CAMERA_TIMER.destroy()
+
+end
+
+IGCSDOF_PROVIDER_CAMERA_TIMER =
+  createTimer(nil, false)
+
+IGCSDOF_PROVIDER_CAMERA_TIMER.Interval =
+  CONFIG.cameraIntervalMs or 16
+
+IGCSDOF_PROVIDER_CAMERA_TIMER.OnTimer =
+  function()
+
+    if not isCurrent() then
+      return
+    end
+
+    processPendingRestore()
+
+    ctx.latestCameraLine =
+      makeCameraLine()
+
+    ctx.cameraSequence =
+      ctx.cameraSequence + 1
+
+  end
+
+IGCSDOF_PROVIDER_CAMERA_TIMER.Enabled =
+  true
+
+ctx.latestCameraLine =
+  makeCameraLine()
+
+ctx.cameraSequence = 1
+
+ctx.senderThread =
+  createThread(cameraSenderWorker)
+
+ctx.receiverThread =
+  createThread(commandReceiverWorker)
+
+ctx.cleanup =
+  function()
+
+    if ctx.savedCamera then
+      writeCamera(ctx.savedCamera)
+    end
+
+    releaseProviderLock()
+
+    safeDestroy(ctx.cameraPipe)
+
+    safeDestroy(ctx.commandPipe)
+
+  end
+
+print(
+  "[IGCSDOF] Universal RAW provider started | Engine=" ..
+  CONFIG.engine
+)
+
+------------------------------------------------------------
+-- STOP
+--
+-- In CT [DISABLE]:
+--
+-- if IGCSDOF_PROVIDER_STOP then
+--   IGCSDOF_PROVIDER_STOP()
+-- end
+------------------------------------------------------------
+
+IGCSDOF_PROVIDER_STOP =
+function()
+
+  local old =
+    IGCSDOF_PROVIDER_CONTEXTS and
+    IGCSDOF_PROVIDER_CONTEXTS[myGeneration]
+    or nil
+
+  IGCSDOF_PROVIDER_GENERATION =
+    (IGCSDOF_PROVIDER_GENERATION or 0) + 1
+
+  if IGCSDOF_PROVIDER_CAMERA_TIMER then
+
+    IGCSDOF_PROVIDER_CAMERA_TIMER.destroy()
+
+    IGCSDOF_PROVIDER_CAMERA_TIMER = nil
+
+  end
+
+  if old then
+
+    old.active = false
+
+    if old.cleanup then
+      pcall(old.cleanup)
+    end
+
+    IGCSDOF_PROVIDER_CONTEXTS[myGeneration] =
+      nil
+
+  end
+
+  print(
+    "[IGCSDOF] Universal RAW provider stopped."
+  )
+
+end
+
+[DISABLE]
+if syntaxcheck then return end
+
+if IGCSDOF_PROVIDER_STOP then
+  IGCSDOF_PROVIDER_STOP()
+end
+</AssemblerScript>
+      <Hotkeys>
+        <Hotkey>
+          <Action>Toggle Activation</Action>
+          <Keys>
+            <Key>33</Key>
+          </Keys>
+          <ID>0</ID>
+        </Hotkey>
+      </Hotkeys>
+    </CheatEntry>
+  </CheatEntries>
+  <UserdefinedSymbols/>
+</CheatTable>

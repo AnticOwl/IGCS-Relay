@@ -1,0 +1,16 @@
+RAW provider command handling:
+
+SESSION_BEGIN
+    Save the current camera values.
+
+SET_POSITION_RAW|x|y|z|fov|fromStart
+    Write x/y/z directly.
+    Do not calculate Right/Up in the CT.
+
+ROTATE_YAW_RAW|delta
+    Add delta directly to the raw yaw value.
+    UE3 delta is in Rotator units.
+    UE4 delta is in degrees.
+
+SESSION_END
+    Restore the saved camera values.

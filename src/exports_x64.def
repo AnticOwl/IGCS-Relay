@@ -1,0 +1,8 @@
+LIBRARY IGCSDOF_UniversalBridge
+EXPORTS
+    NAME DATA
+    DESCRIPTION DATA
+    IGCS_StartScreenshotSession
+    IGCS_EndScreenshotSession
+    IGCS_MoveCameraPanorama
+    IGCS_MoveCameraMultishot

@@ -1,0 +1,23 @@
+IGCSDOF Universal Bridge v0.5.2 GitHub Source Package
+
+Source:
+  src/
+
+Build system:
+  CMakeLists.txt
+  CMakePresets.json
+  scripts/
+
+Documentation:
+  README.md
+  GITHUB_SOURCE_PACKAGE.md
+  PROTOCOL_V1.md
+  PROTOCOL_V2_ENGINE_PROFILES.md
+  docs/CHEAT_ENGINE_RAW_PROVIDER_GUIDE.md
+
+Examples/tools:
+  examples/RAW_PROVIDER_COMMANDS.txt
+  tools/TestProvider.ps1
+
+Dependencies:
+  external/README.txt

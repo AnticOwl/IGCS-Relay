@@ -1,0 +1,2 @@
+This project is original glue code. It interoperates with ReShade and IGCS Connector through their public add-on API and exported function contract.
+ReShade: BSD-3-Clause. IGCS Connector: BSD-style license. No third-party source files are redistributed in this archive.
