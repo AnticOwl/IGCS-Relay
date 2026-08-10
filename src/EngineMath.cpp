@@ -13,6 +13,10 @@ std::string upper(std::string value) {
         [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     return value;
 }
+
+float length3(float x, float y, float z) {
+    return std::sqrt(x * x + y * y + z * z);
+}
 }
 
 EngineProfile engineProfileFromTag(const std::string &tag) {
@@ -25,6 +29,11 @@ EngineProfile engineProfileFromTag(const std::string &tag) {
     if (value == "UE4" || value == "UNREAL4" ||
         value == "UNREAL ENGINE 4") {
         return EngineProfile::Unreal4;
+    }
+    if (value == "DOOM_2016" || value == "DOOM 2016" ||
+        value == "IDTECH6" || value == "IDTECH 6" ||
+        value == "ID TECH 6") {
+        return EngineProfile::IdTech6;
     }
     if (value == "DOOM_ETERNAL" || value == "DOOM ETERNAL" ||
         value == "IDTECH7" || value == "IDTECH 7" ||
@@ -43,6 +52,8 @@ const char *engineProfileDisplayName(EngineProfile profile) {
         return "Unreal Engine 2.5 / 3";
     case EngineProfile::Unreal4:
         return "Unreal Engine 4";
+    case EngineProfile::IdTech6:
+        return "idTech 6";
     case EngineProfile::IdTech7:
         return "idTech 7";
     case EngineProfile::Northlight:
@@ -83,6 +94,102 @@ CameraToolsData buildCameraToolsData(
     data.coordinates.values[0] = raw.x;
     data.coordinates.values[1] = raw.y;
     data.coordinates.values[2] = raw.z;
+
+    // -----------------------------------------------------------------
+    // DOOM 2016 / idTech 6 native-basis convention.
+    //
+    // To keep the CE provider core universal, the existing three RAW
+    // rotation slots carry the native Forward vector for this profile:
+    //
+    //   raw.pitch = Forward X
+    //   raw.yaw   = Forward Y
+    //   raw.roll  = Forward Z
+    //
+    // DOOM 2016 Photo Mode has no native roll. Right is horizontal and
+    // can therefore be reconstructed from Forward, then Up is built with
+    // a strict cross product. This keeps every multishot displacement in
+    // the camera Right/Up plane and removes Forward leakage on U/D moves.
+    // -----------------------------------------------------------------
+    if (profile == EngineProfile::IdTech6) {
+        float fx = raw.pitch;
+        float fy = raw.yaw;
+        float fz = raw.roll;
+
+        const float forwardLength = length3(fx, fy, fz);
+        if (forwardLength > 0.000001f) {
+            fx /= forwardLength;
+            fy /= forwardLength;
+            fz /= forwardLength;
+        } else {
+            fx = 1.0f;
+            fy = 0.0f;
+            fz = 0.0f;
+        }
+
+        const float horizontal = std::sqrt(fx * fx + fy * fy);
+
+        float rx = 0.0f;
+        float ry = 1.0f;
+        float rz = 0.0f;
+
+        if (horizontal > 0.000001f) {
+            // Validated DOOM 2016 handedness:
+            // Right = (ForwardY, -ForwardX, 0) at zero roll.
+            rx = fy / horizontal;
+            ry = -fx / horizontal;
+        }
+
+        // Up = Right x Forward.
+        float ux = ry * fz - rz * fy;
+        float uy = rz * fx - rx * fz;
+        float uz = rx * fy - ry * fx;
+
+        const float upLength = length3(ux, uy, uz);
+        if (upLength > 0.000001f) {
+            ux /= upLength;
+            uy /= upLength;
+            uz /= upLength;
+        } else {
+            ux = 0.0f;
+            uy = 0.0f;
+            uz = 1.0f;
+        }
+
+        // Rebuild Right from Forward x Up to guarantee an orthonormal basis.
+        rx = fy * uz - fz * uy;
+        ry = fz * ux - fx * uz;
+        rz = fx * uy - fy * ux;
+
+        const float rightLength = length3(rx, ry, rz);
+        if (rightLength > 0.000001f) {
+            rx /= rightLength;
+            ry /= rightLength;
+            rz /= rightLength;
+        }
+
+        data.rotationMatrixRightVector.values[0] = rx;
+        data.rotationMatrixRightVector.values[1] = ry;
+        data.rotationMatrixRightVector.values[2] = rz;
+
+        data.rotationMatrixUpVector.values[0] = ux;
+        data.rotationMatrixUpVector.values[1] = uy;
+        data.rotationMatrixUpVector.values[2] = uz;
+
+        data.rotationMatrixForwardVector.values[0] = fx;
+        data.rotationMatrixForwardVector.values[1] = fy;
+        data.rotationMatrixForwardVector.values[2] = fz;
+
+        data.lookQuaternion.values[0] = 0.0f;
+        data.lookQuaternion.values[1] = 0.0f;
+        data.lookQuaternion.values[2] = 0.0f;
+        data.lookQuaternion.values[3] = 1.0f;
+
+        data.pitch = std::atan2(fz, horizontal);
+        data.yaw = std::atan2(fy, fx);
+        data.roll = 0.0f;
+        data.fov = raw.fov;
+        return data;
+    }
 
     float pitch = rawAngleToRadians(raw.pitch, profile);
     float yaw = rawAngleToRadians(raw.yaw, profile);
