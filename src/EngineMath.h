@@ -8,6 +8,7 @@ enum class EngineProfile {
     Normalized,
     UnrealLegacy,
     Unreal4,
+    IdTech6,
     IdTech7,
     Northlight
 };
