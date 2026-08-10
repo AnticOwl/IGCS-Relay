@@ -80,6 +80,14 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_EndScreenshotSession() {
 extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraPanorama(float stepAngle) {
     auto &s = bridge::state();
     if (s.cameraInputMode == bridge::CameraInputMode::RawEuler) {
+        // idTech 6 packs native Forward XYZ into the three RAW rotation
+        // slots so the universal CE provider can remain math-free. Panorama
+        // needs a separate native yaw address and is intentionally left
+        // untouched until that optional provider command is added.
+        if (s.engineProfile == bridge::EngineProfile::IdTech6) {
+            return;
+        }
+
         const float rawDelta = bridge::radiansToRawAngle(stepAngle, s.engineProfile);
         bridge::sendLine(std::format("ROTATE_YAW_RAW|{:.9f}", rawDelta));
         return;
@@ -95,6 +103,47 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr,
         {
             std::scoped_lock lock(s.mutex);
             base = s.sessionBaseRawCamera;
+        }
+
+        // -----------------------------------------------------------------
+        // DOOM 2016 / idTech 6
+        //
+        // The universal CE provider sends the native Forward vector through
+        // the three RAW rotation slots:
+        //   pitch = Forward X
+        //   yaw   = Forward Y
+        //   roll  = Forward Z
+        //
+        // EngineMath reconstructs a strict orthonormal Right/Up/Forward
+        // basis from that native vector. This keeps U/D and L/R movement in
+        // the camera plane and removes any Forward component from samples.
+        // -----------------------------------------------------------------
+        if (s.engineProfile == bridge::EngineProfile::IdTech6) {
+            constexpr float kDoom2016BokehScale = 2.0f;
+
+            const CameraToolsData basis =
+                bridge::buildCameraToolsData(base, s.engineProfile);
+
+            const float scaledLr = lr * kDoom2016BokehScale;
+            const float scaledUd = ud * kDoom2016BokehScale;
+
+            const float x =
+                base.x +
+                basis.rotationMatrixRightVector.values[0] * scaledLr +
+                basis.rotationMatrixUpVector.values[0] * scaledUd;
+            const float y =
+                base.y +
+                basis.rotationMatrixRightVector.values[1] * scaledLr +
+                basis.rotationMatrixUpVector.values[1] * scaledUd;
+            const float z =
+                base.z +
+                basis.rotationMatrixRightVector.values[2] * scaledLr +
+                basis.rotationMatrixUpVector.values[2] * scaledUd;
+
+            bridge::sendLine(std::format(
+                "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+                x, y, z, fov, fromStart ? 1 : 0));
+            return;
         }
 
         // -----------------------------------------------------------------
