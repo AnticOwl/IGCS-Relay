@@ -223,7 +223,7 @@ void displaySettings(reshade::api::effect_runtime *) {
             "Session",
             s.sessionActive ? "Rendering" : "Idle"
         );
-        tableLine("Protocol / Bridge", "v1 / 0.6.7");
+        tableLine("Protocol / Bridge", "v1 / 0.6.8");
 
         if (s.cameraValid) {
             char position[128]{};
