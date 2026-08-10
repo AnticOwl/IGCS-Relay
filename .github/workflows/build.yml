@@ -1,0 +1,58 @@
+name: Build IGCS Relay
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  build-x64:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure x64
+        run: cmake --preset vs2022-x64
+
+      - name: Build x64
+        run: cmake --build --preset vs2022-x64 --config Release
+
+      - name: Upload x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: IGCSRelay-x64
+          path: |
+            build/vs2022-x64/bin/Release/IGCSRelay.addon64
+            build/vs2022-x64/bin/IGCSRelay.addon64
+          if-no-files-found: error
+
+
+  build-x86:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure x86
+        run: cmake --preset vs2022-x86
+
+      - name: Build x86
+        run: cmake --build --preset vs2022-x86 --config Release
+
+      - name: Upload x86
+        uses: actions/upload-artifact@v4
+        with:
+          name: IGCSRelay-x86
+          path: |
+            build/vs2022-x86/bin/Release/IGCSRelay.addon32
+            build/vs2022-x86/bin/IGCSRelay.addon32
+          if-no-files-found: error
