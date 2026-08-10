@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(IGCSDOFUniversalBridge VERSION 0.6.7 LANGUAGES CXX)
+project(IGCSDOFUniversalBridge VERSION 0.6.8 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "This ReShade add-on must be built on Windows.")
