@@ -9,11 +9,11 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -22,7 +22,7 @@ jobs:
         run: scripts\Setup-All.cmd
 
       - name: Upload IGCS Relay
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: IGCSRelay
           path: |
