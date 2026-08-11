@@ -21,6 +21,7 @@
 --   UE2.5
 --   UE3
 --   UE4
+--   idTech6
 --   idTech7
 --   Northlight
 --
