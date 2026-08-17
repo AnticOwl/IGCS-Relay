@@ -12,7 +12,6 @@
 #pragma comment(linker, "/EXPORT:IGCS_MoveCameraMultishot=_IGCS_MoveCameraMultishot")
 #endif
 
-
 extern "C" __declspec(dllexport) bridge::SessionStartCode __cdecl IGCS_StartScreenshotSession(std::uint8_t type) {
     auto &s = bridge::state();
     if (!s.providerConnected || !s.cameraValid) return bridge::SessionStartCode::CameraFeatureNotAvailable;
@@ -66,6 +65,7 @@ extern "C" __declspec(dllexport) bridge::SessionStartCode __cdecl IGCS_StartScre
     s.sessionActive = true;
     return bridge::SessionStartCode::AllOk;
 }
+
 extern "C" __declspec(dllexport) void __cdecl IGCS_EndScreenshotSession() {
     auto &s = bridge::state();
     bridge::sendLine("SESSION_END");
@@ -77,23 +77,25 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_EndScreenshotSession() {
     }
     s.sessionBaseCv.notify_all();
 }
+
 extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraPanorama(float stepAngle) {
     auto &s = bridge::state();
     if (s.cameraInputMode == bridge::CameraInputMode::RawEuler) {
         // idTech 6 packs native Forward XYZ into the three RAW rotation
-        // slots so the universal CE provider can remain math-free. Panorama
-        // needs a separate native yaw address and is intentionally left
-        // untouched until that optional provider command is added.
+        // slots so panorama needs a separate native yaw address.
         if (s.engineProfile == bridge::EngineProfile::IdTech6) {
             return;
         }
 
-        const float rawDelta = bridge::radiansToRawAngle(stepAngle, s.engineProfile);
-        bridge::sendLine(std::format("ROTATE_YAW_RAW|{:.9f}", rawDelta));
+        const double rawDelta = bridge::radiansToRawAngle(
+            static_cast<double>(stepAngle),
+            s.engineProfile);
+        bridge::sendLine(std::format("ROTATE_YAW_RAW|{:.12f}", rawDelta));
         return;
     }
     bridge::sendLine(std::format("MOVE_PANORAMA|{:.9f}", stepAngle));
 }
+
 extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr, float ud, float fov, bool fromStart) {
     auto &s = bridge::state();
 
@@ -105,160 +107,155 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr,
             base = s.sessionBaseRawCamera;
         }
 
-        // -----------------------------------------------------------------
-        // DOOM 2016 / idTech 6
-        //
-        // The universal CE provider sends the native Forward vector through
-        // the three RAW rotation slots:
-        //   pitch = Forward X
-        //   yaw   = Forward Y
-        //   roll  = Forward Z
-        //
-        // EngineMath reconstructs a strict orthonormal Right/Up/Forward
-        // basis from that native vector. This keeps U/D and L/R movement in
-        // the camera plane and removes any Forward component from samples.
-        // -----------------------------------------------------------------
+        // DOOM 2016 / idTech 6.
         if (s.engineProfile == bridge::EngineProfile::IdTech6) {
-            constexpr float kDoom2016BokehScale = 2.0f;
+            constexpr double kDoom2016BokehScale = 2.0;
 
             const CameraToolsData basis =
                 bridge::buildCameraToolsData(base, s.engineProfile);
 
-            const float scaledLr = lr * kDoom2016BokehScale;
-            const float scaledUd = ud * kDoom2016BokehScale;
+            const double scaledLr = static_cast<double>(lr) * kDoom2016BokehScale;
+            const double scaledUd = static_cast<double>(ud) * kDoom2016BokehScale;
 
-            const float x =
+            const double x =
                 base.x +
-                basis.rotationMatrixRightVector.values[0] * scaledLr +
-                basis.rotationMatrixUpVector.values[0] * scaledUd;
-            const float y =
+                static_cast<double>(basis.rotationMatrixRightVector.values[0]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[0]) * scaledUd;
+            const double y =
                 base.y +
-                basis.rotationMatrixRightVector.values[1] * scaledLr +
-                basis.rotationMatrixUpVector.values[1] * scaledUd;
-            const float z =
+                static_cast<double>(basis.rotationMatrixRightVector.values[1]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[1]) * scaledUd;
+            const double z =
                 base.z +
-                basis.rotationMatrixRightVector.values[2] * scaledLr +
-                basis.rotationMatrixUpVector.values[2] * scaledUd;
+                static_cast<double>(basis.rotationMatrixRightVector.values[2]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[2]) * scaledUd;
 
             bridge::sendLine(std::format(
-                "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+                "SET_POSITION_RAW|{:.12f}|{:.12f}|{:.12f}|{:.9f}|{}",
                 x, y, z, fov, fromStart ? 1 : 0));
             return;
         }
 
-        // -----------------------------------------------------------------
-        // DOOM Eternal / idTech 7
-        //
-        // Keep this path deliberately separate from the generic RAW path.
-        // It mirrors the previously validated CE Lua implementation exactly:
-        //
-        //   lr = stepLR * 2.0
-        //   ud = stepUD * 2.0
-        //   pitch = radians(-rawPitch)
-        //   yaw   = radians(90 - rawYaw)
-        //   roll  = radians(rawRoll)
-        //
-        // Then:
-        //   position = base + Right * lr + Up * ud
-        // -----------------------------------------------------------------
+        // DOOM Eternal / idTech 7.
         if (s.engineProfile == bridge::EngineProfile::IdTech7) {
-            constexpr float kPi = 3.14159265358979323846f;
-            constexpr float kDegToRad = kPi / 180.0f;
-            constexpr float kDoomBokehScale = 2.0f;
+            constexpr double kPi = 3.14159265358979323846;
+            constexpr double kDegToRad = kPi / 180.0;
+            constexpr double kDoomBokehScale = 2.0;
 
-            const float scaledLr = lr * kDoomBokehScale;
-            const float scaledUd = ud * kDoomBokehScale;
+            const double scaledLr = static_cast<double>(lr) * kDoomBokehScale;
+            const double scaledUd = static_cast<double>(ud) * kDoomBokehScale;
 
-            const float pitch = -base.pitch * kDegToRad;
-            const float yaw = (90.0f - base.yaw) * kDegToRad;
-            const float roll = base.roll * kDegToRad;
+            const double pitch = -base.pitch * kDegToRad;
+            const double yaw = (90.0 - base.yaw) * kDegToRad;
+            const double roll = base.roll * kDegToRad;
 
-            const float cp = std::cos(pitch);
-            const float sp = std::sin(pitch);
-            const float cy = std::cos(yaw);
-            const float sy = std::sin(yaw);
-            const float cr = std::cos(roll);
-            const float sr = std::sin(roll);
+            const double cp = std::cos(pitch);
+            const double sp = std::sin(pitch);
+            const double cy = std::cos(yaw);
+            const double sy = std::sin(yaw);
+            const double cr = std::cos(roll);
+            const double sr = std::sin(roll);
 
-            const float rightX = cy * sr * sp - cr * sy;
-            const float rightY = sy * sr * sp + cr * cy;
-            const float rightZ = -sr * cp;
+            const double rightX = cy * sr * sp - cr * sy;
+            const double rightY = sy * sr * sp + cr * cy;
+            const double rightZ = -sr * cp;
 
-            const float upX = -cr * cy * sp - sr * sy;
-            const float upY = -cr * sy * sp + sr * cy;
-            const float upZ = cr * cp;
+            const double upX = -cr * cy * sp - sr * sy;
+            const double upY = -cr * sy * sp + sr * cy;
+            const double upZ = cr * cp;
 
-            const float x = base.x + rightX * scaledLr + upX * scaledUd;
-            const float y = base.y + rightY * scaledLr + upY * scaledUd;
-            const float z = base.z + rightZ * scaledLr + upZ * scaledUd;
+            const double x = base.x + rightX * scaledLr + upX * scaledUd;
+            const double y = base.y + rightY * scaledLr + upY * scaledUd;
+            const double z = base.z + rightZ * scaledLr + upZ * scaledUd;
 
             bridge::sendLine(std::format(
-                "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+                "SET_POSITION_RAW|{:.12f}|{:.12f}|{:.12f}|{:.9f}|{}",
                 x, y, z, fov, fromStart ? 1 : 0));
             return;
         }
 
-        // -----------------------------------------------------------------
-        // Northlight / CONTROL
-        //
-        // Validated legacy CONTROL Lua behavior:
-        //   raw Pitch/Yaw/Roll are radians
-        //   Forward zero = +X
-        //   Right zero   = +Y
-        //   Up zero      = +Z
-        //   lr = stepLR * 0.007
-        //   ud = stepUD * 0.007
-        //
-        // buildCameraToolsData() reconstructs the Northlight basis and
-        // handles the validated positive-roll convention.
-        // -----------------------------------------------------------------
+        // Northlight / CONTROL.
         if (s.engineProfile == bridge::EngineProfile::Northlight) {
-            constexpr float kNorthlightDofScale = 0.007f;
+            constexpr double kNorthlightDofScale = 0.007;
 
             const CameraToolsData basis =
                 bridge::buildCameraToolsData(base, s.engineProfile);
 
-            const float scaledLr = lr * kNorthlightDofScale;
-            const float scaledUd = ud * kNorthlightDofScale;
+            const double scaledLr = static_cast<double>(lr) * kNorthlightDofScale;
+            const double scaledUd = static_cast<double>(ud) * kNorthlightDofScale;
 
-            const float x =
+            const double x =
                 base.x +
-                basis.rotationMatrixRightVector.values[0] * scaledLr +
-                basis.rotationMatrixUpVector.values[0] * scaledUd;
-            const float y =
+                static_cast<double>(basis.rotationMatrixRightVector.values[0]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[0]) * scaledUd;
+            const double y =
                 base.y +
-                basis.rotationMatrixRightVector.values[1] * scaledLr +
-                basis.rotationMatrixUpVector.values[1] * scaledUd;
-            const float z =
+                static_cast<double>(basis.rotationMatrixRightVector.values[1]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[1]) * scaledUd;
+            const double z =
                 base.z +
-                basis.rotationMatrixRightVector.values[2] * scaledLr +
-                basis.rotationMatrixUpVector.values[2] * scaledUd;
+                static_cast<double>(basis.rotationMatrixRightVector.values[2]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[2]) * scaledUd;
 
             bridge::sendLine(std::format(
-                "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+                "SET_POSITION_RAW|{:.12f}|{:.12f}|{:.12f}|{:.9f}|{}",
                 x, y, z, fov, fromStart ? 1 : 0));
             return;
         }
 
-        // Generic RAW path for UE2.5 / UE3 / UE4. Unchanged.
+        // Unreal Engine 5.
+        //
+        // First validation profile: EXACTLY the UE4 basis convention and
+        // bokeh scale, but all absolute camera positions stay double from
+        // CAMERA_RAW parsing through the final SET_POSITION_RAW command.
+        // This avoids LWC precision loss at large world coordinates.
+        if (s.engineProfile == bridge::EngineProfile::Unreal5) {
+            constexpr double kUE5BokehScale = 1.0;
+
+            const CameraToolsData basis =
+                bridge::buildCameraToolsData(base, s.engineProfile);
+
+            const double scaledLr = static_cast<double>(lr) * kUE5BokehScale;
+            const double scaledUd = static_cast<double>(ud) * kUE5BokehScale;
+
+            const double x =
+                base.x +
+                static_cast<double>(basis.rotationMatrixRightVector.values[0]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[0]) * scaledUd;
+            const double y =
+                base.y +
+                static_cast<double>(basis.rotationMatrixRightVector.values[1]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[1]) * scaledUd;
+            const double z =
+                base.z +
+                static_cast<double>(basis.rotationMatrixRightVector.values[2]) * scaledLr +
+                static_cast<double>(basis.rotationMatrixUpVector.values[2]) * scaledUd;
+
+            bridge::sendLine(std::format(
+                "SET_POSITION_RAW|{:.12f}|{:.12f}|{:.12f}|{:.9f}|{}",
+                x, y, z, fov, fromStart ? 1 : 0));
+            return;
+        }
+
+        // Generic RAW path for UE2.5 / UE3 / UE4.
         const CameraToolsData basis =
             bridge::buildCameraToolsData(base, s.engineProfile);
 
-        const float x =
+        const double x =
             base.x +
-            basis.rotationMatrixRightVector.values[0] * lr +
-            basis.rotationMatrixUpVector.values[0] * ud;
-        const float y =
+            static_cast<double>(basis.rotationMatrixRightVector.values[0]) * static_cast<double>(lr) +
+            static_cast<double>(basis.rotationMatrixUpVector.values[0]) * static_cast<double>(ud);
+        const double y =
             base.y +
-            basis.rotationMatrixRightVector.values[1] * lr +
-            basis.rotationMatrixUpVector.values[1] * ud;
-        const float z =
+            static_cast<double>(basis.rotationMatrixRightVector.values[1]) * static_cast<double>(lr) +
+            static_cast<double>(basis.rotationMatrixUpVector.values[1]) * static_cast<double>(ud);
+        const double z =
             base.z +
-            basis.rotationMatrixRightVector.values[2] * lr +
-            basis.rotationMatrixUpVector.values[2] * ud;
+            static_cast<double>(basis.rotationMatrixRightVector.values[2]) * static_cast<double>(lr) +
+            static_cast<double>(basis.rotationMatrixUpVector.values[2]) * static_cast<double>(ud);
 
         bridge::sendLine(std::format(
-            "SET_POSITION_RAW|{:.9f}|{:.9f}|{:.9f}|{:.9f}|{}",
+            "SET_POSITION_RAW|{:.12f}|{:.12f}|{:.12f}|{:.9f}|{}",
             x, y, z, fov, fromStart ? 1 : 0));
         return;
     }
