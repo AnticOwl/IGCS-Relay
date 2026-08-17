@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - master
+      - ue5-support
 
 jobs:
   build:
