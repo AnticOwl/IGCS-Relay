@@ -41,6 +41,12 @@ float number(const std::string &s, float fallback = 0.0f) {
     return end != s.c_str() ? value : fallback;
 }
 
+double number64(const std::string &s, double fallback = 0.0) {
+    char *end = nullptr;
+    const double value = std::strtod(s.c_str(), &end);
+    return end != s.c_str() ? value : fallback;
+}
+
 void setError(const std::string &message) {
     auto &s = state();
     std::scoped_lock lock(s.mutex);
@@ -71,26 +77,26 @@ void clearOutputState() {
 void parseHello(const std::vector<std::string> &parts) {
     auto &s = state();
     {
-    std::scoped_lock lock(s.mutex);
-    for (std::size_t i = 1; i < parts.size(); ++i) {
-        const auto pos = parts[i].find('=');
-        if (pos == std::string::npos) continue;
-        const auto key = parts[i].substr(0, pos);
-        const auto value = parts[i].substr(pos + 1);
-        if (key == "Provider") s.provider = value;
-        else if (key == "Game") s.game = value;
-        else if (key == "Engine") {
-            s.engine = value;
-            s.engineProfile = engineProfileFromTag(value);
+        std::scoped_lock lock(s.mutex);
+        for (std::size_t i = 1; i < parts.size(); ++i) {
+            const auto pos = parts[i].find('=');
+            if (pos == std::string::npos) continue;
+            const auto key = parts[i].substr(0, pos);
+            const auto value = parts[i].substr(pos + 1);
+            if (key == "Provider") s.provider = value;
+            else if (key == "Game") s.game = value;
+            else if (key == "Engine") {
+                s.engine = value;
+                s.engineProfile = engineProfileFromTag(value);
+            }
+            else if (key == "EngineVersion") s.engineVersion = value;
+            else if (key == "CameraMode") {
+                s.cameraInputMode =
+                    (value == "RAW" || value == "Raw" || value == "raw")
+                        ? CameraInputMode::RawEuler
+                        : CameraInputMode::NormalizedBasis;
+            }
         }
-        else if (key == "EngineVersion") s.engineVersion = value;
-        else if (key == "CameraMode") {
-            s.cameraInputMode =
-                (value == "RAW" || value == "Raw" || value == "raw")
-                    ? CameraInputMode::RawEuler
-                    : CameraInputMode::NormalizedBasis;
-        }
-    }
     }
     s.helloReceived = true;
     refreshProviderReadyState();
@@ -136,7 +142,6 @@ void parseCamera(const std::vector<std::string> &p) {
     refreshProviderReadyState();
 }
 
-
 void parseCameraRaw(const std::vector<std::string> &p) {
     // CAMERA_RAW|valid|enabled|locked|x|y|z|pitch|yaw|roll|fov
     if (p.size() < 11) return;
@@ -145,13 +150,18 @@ void parseCameraRaw(const std::vector<std::string> &p) {
     raw.valid = number(p[1]) != 0.0f;
     raw.enabled = number(p[2]) != 0.0f;
     raw.locked = number(p[3]) != 0.0f;
-    raw.x = number(p[4]);
-    raw.y = number(p[5]);
-    raw.z = number(p[6]);
-    raw.pitch = number(p[7]);
-    raw.yaw = number(p[8]);
-    raw.roll = number(p[9]);
-    raw.fov = number(p[10], 70.0f);
+
+    // RAW camera values use double precision. This is essential for UE5
+    // Large World Coordinates: at positions around +/-200000 a float loses
+    // the tiny multishot offsets used by IGCSDOF before they reach the CE
+    // provider. Existing float-based providers are fully compatible.
+    raw.x = number64(p[4]);
+    raw.y = number64(p[5]);
+    raw.z = number64(p[6]);
+    raw.pitch = number64(p[7]);
+    raw.yaw = number64(p[8]);
+    raw.roll = number64(p[9]);
+    raw.fov = number64(p[10], 70.0);
 
     auto &s = state();
     const CameraToolsData data = buildCameraToolsData(raw, s.engineProfile);
@@ -395,7 +405,6 @@ void startPipeServer() {
     g_inputThread = std::thread(inputLoop);
     g_outputThread = std::thread(outputLoop);
 }
-
 
 void stopPipeServer() {
     auto &s = state();
