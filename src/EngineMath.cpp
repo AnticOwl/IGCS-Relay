@@ -5,8 +5,8 @@
 
 namespace bridge {
 namespace {
-constexpr float kPi = 3.14159265358979323846f;
-constexpr float kLegacyUnitsPerTurn = 65536.0f;
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kLegacyUnitsPerTurn = 65536.0;
 
 std::string upper(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(),
@@ -30,6 +30,10 @@ EngineProfile engineProfileFromTag(const std::string &tag) {
         value == "UNREAL ENGINE 4") {
         return EngineProfile::Unreal4;
     }
+    if (value == "UE5" || value == "UNREAL5" ||
+        value == "UNREAL ENGINE 5") {
+        return EngineProfile::Unreal5;
+    }
     if (value == "DOOM_2016" || value == "DOOM 2016" ||
         value == "IDTECH6" || value == "IDTECH 6" ||
         value == "ID TECH 6") {
@@ -52,6 +56,8 @@ const char *engineProfileDisplayName(EngineProfile profile) {
         return "Unreal Engine 2.5 / 3";
     case EngineProfile::Unreal4:
         return "Unreal Engine 4";
+    case EngineProfile::Unreal5:
+        return "Unreal Engine 5";
     case EngineProfile::IdTech6:
         return "idTech 6";
     case EngineProfile::IdTech7:
@@ -63,23 +69,25 @@ const char *engineProfileDisplayName(EngineProfile profile) {
     }
 }
 
-float rawAngleToRadians(float value, EngineProfile profile) {
+double rawAngleToRadians(double value, EngineProfile profile) {
     if (profile == EngineProfile::UnrealLegacy) {
-        return value * (2.0f * kPi / kLegacyUnitsPerTurn);
+        return value * (2.0 * kPi / kLegacyUnitsPerTurn);
     }
-    if (profile == EngineProfile::Unreal4) {
-        return value * (kPi / 180.0f);
+    if (profile == EngineProfile::Unreal4 ||
+        profile == EngineProfile::Unreal5) {
+        return value * (kPi / 180.0);
     }
     return value;
 }
 
-float radiansToRawAngle(float value, EngineProfile profile) {
+double radiansToRawAngle(double value, EngineProfile profile) {
     if (profile == EngineProfile::UnrealLegacy) {
-        return value * (kLegacyUnitsPerTurn / (2.0f * kPi));
+        return value * (kLegacyUnitsPerTurn / (2.0 * kPi));
     }
     if (profile == EngineProfile::Unreal4 ||
+        profile == EngineProfile::Unreal5 ||
         profile == EngineProfile::IdTech7) {
-        return value * (180.0f / kPi);
+        return value * (180.0 / kPi);
     }
     return value;
 }
@@ -91,29 +99,15 @@ CameraToolsData buildCameraToolsData(
     CameraToolsData data{};
     data.cameraEnabled = raw.enabled ? 1 : 0;
     data.cameraMovementLocked = raw.locked ? 1 : 0;
-    data.coordinates.values[0] = raw.x;
-    data.coordinates.values[1] = raw.y;
-    data.coordinates.values[2] = raw.z;
+    data.coordinates.values[0] = static_cast<float>(raw.x);
+    data.coordinates.values[1] = static_cast<float>(raw.y);
+    data.coordinates.values[2] = static_cast<float>(raw.z);
 
-    // -----------------------------------------------------------------
     // DOOM 2016 / idTech 6 native-basis convention.
-    //
-    // To keep the CE provider core universal, the existing three RAW
-    // rotation slots carry the native Forward vector for this profile:
-    //
-    //   raw.pitch = Forward X
-    //   raw.yaw   = Forward Y
-    //   raw.roll  = Forward Z
-    //
-    // DOOM 2016 Photo Mode has no native roll. Right is horizontal and
-    // can therefore be reconstructed from Forward, then Up is built with
-    // a strict cross product. This keeps every multishot displacement in
-    // the camera Right/Up plane and removes Forward leakage on U/D moves.
-    // -----------------------------------------------------------------
     if (profile == EngineProfile::IdTech6) {
-        float fx = raw.pitch;
-        float fy = raw.yaw;
-        float fz = raw.roll;
+        float fx = static_cast<float>(raw.pitch);
+        float fy = static_cast<float>(raw.yaw);
+        float fz = static_cast<float>(raw.roll);
 
         const float forwardLength = length3(fx, fy, fz);
         if (forwardLength > 0.000001f) {
@@ -133,13 +127,10 @@ CameraToolsData buildCameraToolsData(
         float rz = 0.0f;
 
         if (horizontal > 0.000001f) {
-            // Validated DOOM 2016 handedness:
-            // Right = (ForwardY, -ForwardX, 0) at zero roll.
             rx = fy / horizontal;
             ry = -fx / horizontal;
         }
 
-        // Up = Right x Forward.
         float ux = ry * fz - rz * fy;
         float uy = rz * fx - rx * fz;
         float uz = rx * fy - ry * fx;
@@ -155,7 +146,6 @@ CameraToolsData buildCameraToolsData(
             uz = 1.0f;
         }
 
-        // Rebuild Right from Forward x Up to guarantee an orthonormal basis.
         rx = fy * uz - fz * uy;
         ry = fz * ux - fx * uz;
         rz = fx * uy - fy * ux;
@@ -187,70 +177,57 @@ CameraToolsData buildCameraToolsData(
         data.pitch = std::atan2(fz, horizontal);
         data.yaw = std::atan2(fy, fx);
         data.roll = 0.0f;
-        data.fov = raw.fov;
+        data.fov = static_cast<float>(raw.fov);
         return data;
     }
 
-    float pitch = rawAngleToRadians(raw.pitch, profile);
-    float yaw = rawAngleToRadians(raw.yaw, profile);
-    float roll = rawAngleToRadians(raw.roll, profile);
+    double pitch = rawAngleToRadians(raw.pitch, profile);
+    double yaw = rawAngleToRadians(raw.yaw, profile);
+    double roll = rawAngleToRadians(raw.roll, profile);
 
-    // DOOM Eternal / idTech 7 validated convention.
     if (profile == EngineProfile::IdTech7) {
-        // idTech 7 Photo Mode stores Pitch/Yaw/Roll as degrees.
-        pitch = -raw.pitch * (kPi / 180.0f);
-        yaw = (90.0f - raw.yaw) * (kPi / 180.0f);
-        roll = raw.roll * (kPi / 180.0f);
+        pitch = -raw.pitch * (kPi / 180.0);
+        yaw = (90.0 - raw.yaw) * (kPi / 180.0);
+        roll = raw.roll * (kPi / 180.0);
     }
 
-    // Northlight / CONTROL validated raw convention:
-    //   yaw, pitch, roll are already radians.
-    //   Forward at zero = +X
-    //   Right   at zero = +Y
-    //   Up      at zero = +Z
-    //
-    // The validated CONTROL Lua applies positive roll with:
-    //   Right' = Right*cos(r) + Up*sin(r)
-    //   Up'    = Up*cos(r) - Right*sin(r)
-    //
-    // The generic basis formula below uses the opposite roll sign,
-    // therefore negate raw roll for Northlight before evaluating it.
     if (profile == EngineProfile::Northlight) {
         pitch = raw.pitch;
         yaw = raw.yaw;
         roll = -raw.roll;
     }
 
-    const float cp = std::cos(pitch);
-    const float sp = std::sin(pitch);
-    const float cy = std::cos(yaw);
-    const float sy = std::sin(yaw);
-    const float cr = std::cos(roll);
-    const float sr = std::sin(roll);
+    const double cp = std::cos(pitch);
+    const double sp = std::sin(pitch);
+    const double cy = std::cos(yaw);
+    const double sy = std::sin(yaw);
+    const double cr = std::cos(roll);
+    const double sr = std::sin(roll);
 
-    // Same Unreal basis convention validated in the existing CE providers.
-    data.rotationMatrixRightVector.values[0] = cy * sr * sp - cr * sy;
-    data.rotationMatrixRightVector.values[1] = sy * sr * sp + cr * cy;
-    data.rotationMatrixRightVector.values[2] = -sr * cp;
+    // Same Unreal basis convention validated in the existing UE4 providers.
+    // UE5 deliberately starts with this exact convention; only the raw
+    // position precision differs for the first validation pass.
+    data.rotationMatrixRightVector.values[0] = static_cast<float>(cy * sr * sp - cr * sy);
+    data.rotationMatrixRightVector.values[1] = static_cast<float>(sy * sr * sp + cr * cy);
+    data.rotationMatrixRightVector.values[2] = static_cast<float>(-sr * cp);
 
-    data.rotationMatrixUpVector.values[0] = -cr * cy * sp - sr * sy;
-    data.rotationMatrixUpVector.values[1] = -cr * sy * sp + sr * cy;
-    data.rotationMatrixUpVector.values[2] = cr * cp;
+    data.rotationMatrixUpVector.values[0] = static_cast<float>(-cr * cy * sp - sr * sy);
+    data.rotationMatrixUpVector.values[1] = static_cast<float>(-cr * sy * sp + sr * cy);
+    data.rotationMatrixUpVector.values[2] = static_cast<float>(cr * cp);
 
-    data.rotationMatrixForwardVector.values[0] = cp * cy;
-    data.rotationMatrixForwardVector.values[1] = cp * sy;
-    data.rotationMatrixForwardVector.values[2] = sp;
+    data.rotationMatrixForwardVector.values[0] = static_cast<float>(cp * cy);
+    data.rotationMatrixForwardVector.values[1] = static_cast<float>(cp * sy);
+    data.rotationMatrixForwardVector.values[2] = static_cast<float>(sp);
 
-    // Quaternion is not required by the current IGCS DoF path.
     data.lookQuaternion.values[0] = 0.0f;
     data.lookQuaternion.values[1] = 0.0f;
     data.lookQuaternion.values[2] = 0.0f;
     data.lookQuaternion.values[3] = 1.0f;
 
-    data.pitch = pitch;
-    data.yaw = yaw;
-    data.roll = roll;
-    data.fov = raw.fov;
+    data.pitch = static_cast<float>(pitch);
+    data.yaw = static_cast<float>(yaw);
+    data.roll = static_cast<float>(roll);
+    data.fov = static_cast<float>(raw.fov);
     return data;
 }
 
