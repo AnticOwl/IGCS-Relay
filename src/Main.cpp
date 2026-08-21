@@ -37,6 +37,12 @@ void tableStatus(
     tableLine(label, ok ? okText : badText);
 }
 
+const char *dofStatusText(bridge::DofBackend backend, bridge::DofBackend selected) {
+    if (!bridge::isDofBackendDetected(backend)) return "Not found";
+    if (!bridge::isDofBackendConnected(backend)) return "Detected / not connected";
+    return backend == selected ? "Active" : "Ready";
+}
+
 float calculateLabelColumnWidth() {
     static constexpr std::array<const char *, 17> kLabels = {
         "Provider",
@@ -157,7 +163,9 @@ void displaySettings(reshade::api::effect_runtime *) {
     if (s.sessionActive.load()) ImGui::EndDisabled();
 
     if (s.sessionActive.load()) {
-        ImGui::TextDisabled("Backend selection is locked while a screenshot session is active.");
+        ImGui::TextDisabled("Finish the current screenshot session before switching DOF backend.");
+    } else {
+        ImGui::TextDisabled("Both detected DOF addons stay connected; switching is immediate.");
     }
 
     if (ImGui::BeginTable(
@@ -167,17 +175,13 @@ void displaySettings(reshade::api::effect_runtime *) {
         )) {
         setupStatusColumns(labelColumnWidth);
         tableLine("DOF backend", bridge::dofBackendDisplayName(selectedBackend));
-        tableStatus(
+        tableLine(
             "IGCSDOF addon",
-            bridge::isDofBackendDetected(bridge::DofBackend::IgcsDof),
-            "Detected",
-            "Not found"
+            dofStatusText(bridge::DofBackend::IgcsDof, selectedBackend)
         );
-        tableStatus(
+        tableLine(
             "Parallax DOF addon",
-            bridge::isDofBackendDetected(bridge::DofBackend::Parallax),
-            "Detected",
-            "Not found"
+            dofStatusText(bridge::DofBackend::Parallax, selectedBackend)
         );
         ImGui::EndTable();
     }
@@ -231,8 +235,8 @@ void displaySettings(reshade::api::effect_runtime *) {
         tableStatus(
             "DOF consumer",
             s.igcsConnected,
-            "Connected",
-            "Not connected"
+            "Selected backend ready",
+            "Selected backend unavailable"
         );
 
         const bool exportStart =
