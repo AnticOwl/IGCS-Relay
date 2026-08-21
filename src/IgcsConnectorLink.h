@@ -10,6 +10,7 @@ const char *dofBackendDisplayName(DofBackend backend);
 DofBackend selectedDofBackend();
 void selectDofBackend(DofBackend backend);
 bool isDofBackendDetected(DofBackend backend);
+bool isDofBackendConnected(DofBackend backend);
 
 void refreshIgcsConnectorLink(bool force = false);
 void resetIgcsConnectorLink();
