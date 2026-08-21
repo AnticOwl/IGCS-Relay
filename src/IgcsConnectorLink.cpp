@@ -13,12 +13,16 @@ namespace {
 using ConnectFn = bool (*)();
 using BufferFn = unsigned char *(*)();
 
-ConnectFn g_connect = nullptr;
-BufferFn g_buffer = nullptr;
-unsigned char *g_target = nullptr;
+struct DofConsumer {
+    ConnectFn connect{};
+    BufferFn buffer{};
+    unsigned char *target{};
+    bool detected{};
+};
+
+DofConsumer g_igcsDof{};
+DofConsumer g_parallax{};
 DofBackend g_selectedBackend = DofBackend::IgcsDof;
-bool g_igcsDofDetected = false;
-bool g_parallaxDetected = false;
 
 std::wstring moduleFileName(HMODULE module) {
     wchar_t path[MAX_PATH]{};
@@ -55,12 +59,31 @@ bool classifyBackend(HMODULE module, DofBackend &backend) {
     return false;
 }
 
-void setDetected(DofBackend backend) {
-    if (backend == DofBackend::Parallax) {
-        g_parallaxDetected = true;
-    } else {
-        g_igcsDofDetected = true;
+DofConsumer &consumerFor(DofBackend backend) {
+    return backend == DofBackend::Parallax ? g_parallax : g_igcsDof;
+}
+
+const DofConsumer &consumerFor(DofBackend backend, int) {
+    return backend == DofBackend::Parallax ? g_parallax : g_igcsDof;
+}
+
+void clearConnection(DofConsumer &consumer) {
+    consumer.connect = nullptr;
+    consumer.buffer = nullptr;
+    consumer.target = nullptr;
+    consumer.detected = false;
+}
+
+void connectConsumer(DofConsumer &consumer) {
+    if (consumer.target || !consumer.connect || !consumer.buffer) return;
+
+    if (consumer.connect()) {
+        consumer.target = consumer.buffer();
     }
+}
+
+void updateActiveConnectionState() {
+    state().igcsConnected = consumerFor(g_selectedBackend).target != nullptr;
 }
 }
 
@@ -83,27 +106,31 @@ void selectDofBackend(DofBackend backend) {
     if (s.sessionActive.load() || backend == g_selectedBackend) return;
 
     g_selectedBackend = backend;
-    resetIgcsConnectorLink();
-    s.igcsHandshakePending = true;
+    updateActiveConnectionState();
+
+    // Both consumers stay connected. The next publish switches cameraEnabled
+    // atomically: selected consumer gets live camera data, the other gets a
+    // disabled camera. No reconnect and no engine/provider math changes.
 }
 
 bool isDofBackendDetected(DofBackend backend) {
-    return backend == DofBackend::Parallax
-        ? g_parallaxDetected
-        : g_igcsDofDetected;
+    return consumerFor(backend, 0).detected;
+}
+
+bool isDofBackendConnected(DofBackend backend) {
+    return consumerFor(backend, 0).target != nullptr;
 }
 
 void resetIgcsConnectorLink() {
-    g_connect = nullptr;
-    g_buffer = nullptr;
-    g_target = nullptr;
+    clearConnection(g_igcsDof);
+    clearConnection(g_parallax);
     state().igcsConnected = false;
 }
 
 void refreshIgcsConnectorLink(bool force) {
     auto &s = state();
 
-    // Critical ordering rule: do not tell a DOF consumer about this bridge
+    // Critical ordering rule: do not tell DOF consumers about this bridge
     // until the external provider has supplied HELLO + a valid camera and both
     // transport channels are connected.
     if (!s.providerReady.load()) {
@@ -112,21 +139,24 @@ void refreshIgcsConnectorLink(bool force) {
     }
 
     if (force) resetIgcsConnectorLink();
-    if (g_target) {
-        s.igcsConnected = true;
+
+    // If both consumers are already connected there is nothing to rescan.
+    if (g_igcsDof.target && g_parallax.target) {
+        updateActiveConnectionState();
         return;
     }
 
     HMODULE modules[512]{};
     DWORD needed = 0;
-    if (!EnumProcessModules(GetCurrentProcess(), modules, sizeof(modules), &needed)) return;
+    if (!EnumProcessModules(GetCurrentProcess(), modules, sizeof(modules), &needed)) {
+        updateActiveConnectionState();
+        return;
+    }
 
-    g_igcsDofDetected = false;
-    g_parallaxDetected = false;
-
-    HMODULE selectedModule = nullptr;
-    ConnectFn selectedConnect = nullptr;
-    BufferFn selectedBuffer = nullptr;
+    // Detection is refreshed on every scan. Existing live targets are kept
+    // unless a forced handshake reset was requested.
+    g_igcsDof.detected = false;
+    g_parallax.detected = false;
 
     for (DWORD i = 0; i < needed / sizeof(HMODULE); ++i) {
         auto connect = reinterpret_cast<ConnectFn>(
@@ -140,26 +170,17 @@ void refreshIgcsConnectorLink(bool force) {
         DofBackend backend{};
         if (!classifyBackend(modules[i], backend)) continue;
 
-        setDetected(backend);
-        if (backend != g_selectedBackend || selectedModule != nullptr) continue;
-
-        selectedModule = modules[i];
-        selectedConnect = connect;
-        selectedBuffer = buffer;
+        DofConsumer &consumer = consumerFor(backend);
+        consumer.detected = true;
+        consumer.connect = connect;
+        consumer.buffer = buffer;
     }
 
-    if (selectedModule && selectedConnect && selectedBuffer) {
-        // connectFromCameraTools is intentionally called only after ProviderReady.
-        // Switching backends only changes which consumer receives CameraToolsData;
-        // provider transport and all camera math remain untouched.
-        if (selectedConnect()) {
-            g_connect = selectedConnect;
-            g_buffer = selectedBuffer;
-            g_target = selectedBuffer();
-        }
-    }
-
-    s.igcsConnected = g_target != nullptr;
+    // Connect every compatible consumer that is present. Selection only
+    // controls which one receives an enabled camera, so switching is instant.
+    connectConsumer(g_igcsDof);
+    connectConsumer(g_parallax);
+    updateActiveConnectionState();
 }
 
 void publishCameraData() {
@@ -171,18 +192,40 @@ void publishCameraData() {
 
     if (s.igcsHandshakePending.exchange(false)) {
         refreshIgcsConnectorLink(true);
-    } else if (!g_target) {
+    } else if (!g_igcsDof.target || !g_parallax.target) {
+        // Re-scan while one consumer is missing. ReShade loads addons at
+        // startup, so this normally stops immediately once both are found.
         refreshIgcsConnectorLink(false);
     }
 
-    if (!g_target) return;
+    DofConsumer &active = consumerFor(g_selectedBackend);
+    updateActiveConnectionState();
+    if (!active.target) return;
 
-    CameraToolsData copy{};
+    CameraToolsData live{};
     {
         std::scoped_lock lock(s.mutex);
-        copy = s.camera;
+        live = s.camera;
     }
-    if (!s.cameraValid) copy.cameraEnabled = 0;
-    std::memcpy(g_target, &copy, sizeof(copy));
+    if (!s.cameraValid) live.cameraEnabled = 0;
+
+    CameraToolsData inactive = live;
+    inactive.cameraEnabled = 0;
+    inactive.cameraMovementLocked = 1;
+
+    // Both buffers are kept current. Only the selected backend is allowed to
+    // see an enabled camera; the other remains connected and can be activated
+    // on the next frame without a new handshake.
+    if (g_igcsDof.target) {
+        const CameraToolsData &data =
+            g_selectedBackend == DofBackend::IgcsDof ? live : inactive;
+        std::memcpy(g_igcsDof.target, &data, sizeof(data));
+    }
+
+    if (g_parallax.target) {
+        const CameraToolsData &data =
+            g_selectedBackend == DofBackend::Parallax ? live : inactive;
+        std::memcpy(g_parallax.target, &data, sizeof(data));
+    }
 }
 }
