@@ -11,7 +11,7 @@
 #include <string>
 
 extern "C" const char *NAME = "IGCSDOF Universal Bridge";
-extern "C" const char *DESCRIPTION = "Universal queued Named Pipe camera-provider bridge for IGCS Connector / IGCSDOF.";
+extern "C" const char *DESCRIPTION = "Universal queued Named Pipe camera-provider bridge for IGCSDOF / Parallax DOF.";
 
 namespace {
 HMODULE g_selfModule = nullptr;
@@ -44,7 +44,7 @@ const char *dofStatusText(bridge::DofBackend backend, bridge::DofBackend selecte
 }
 
 float calculateLabelColumnWidth() {
-    static constexpr std::array<const char *, 17> kLabels = {
+    static constexpr std::array<const char *, 18> kLabels = {
         "Provider",
         "Engine",
         "Camera mode",
@@ -60,7 +60,8 @@ float calculateLabelColumnWidth() {
         "DOF consumer",
         "IGCS command exports",
         "Session",
-        "Protocol / Bridge",
+        "Version",
+        "Protocol",
         "Position"
     };
 
@@ -269,11 +270,12 @@ void displaySettings(reshade::api::effect_runtime *) {
         )) {
         setupStatusColumns(labelColumnWidth);
 
-        tableLine(
-            "Session",
-            s.sessionActive ? "Rendering" : "Idle"
-        );
-        tableLine("Protocol / Bridge", "v1 / 0.6.8-test-dof-selector");
+        const std::string sessionDisplay = s.sessionActive.load()
+            ? std::string("Rendering - ") + bridge::dofBackendDisplayName(selectedBackend)
+            : "Idle";
+        tableLine("Session", sessionDisplay.c_str());
+        tableLine("Version", "0.6.9");
+        tableLine("Protocol", "v1");
 
         if (s.cameraValid) {
             char position[128]{};
