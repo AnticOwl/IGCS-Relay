@@ -113,6 +113,27 @@ void selectDofBackend(DofBackend backend) {
     // disabled camera. No reconnect and no engine/provider math changes.
 }
 
+bool selectDofBackendFromCallerAddress(const void *address) {
+    if (!address || state().sessionActive.load()) return false;
+
+    HMODULE callerModule = nullptr;
+    if (!GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(address),
+            &callerModule
+        )) {
+        return false;
+    }
+
+    DofBackend backend{};
+    if (!classifyBackend(callerModule, backend)) return false;
+
+    g_selectedBackend = backend;
+    updateActiveConnectionState();
+    return true;
+}
+
 bool isDofBackendDetected(DofBackend backend) {
     return consumerFor(backend, 0).detected;
 }
