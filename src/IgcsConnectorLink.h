@@ -9,6 +9,7 @@ enum class DofBackend {
 const char *dofBackendDisplayName(DofBackend backend);
 DofBackend selectedDofBackend();
 void selectDofBackend(DofBackend backend);
+bool selectDofBackendFromCallerAddress(const void *address);
 bool isDofBackendDetected(DofBackend backend);
 bool isDofBackendConnected(DofBackend backend);
 
