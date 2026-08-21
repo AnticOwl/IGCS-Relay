@@ -11,7 +11,7 @@
 #include <string>
 
 extern "C" const char *NAME = "IGCSDOF Universal Bridge";
-extern "C" const char *DESCRIPTION = "Universal queued Named Pipe camera-provider bridge for IGCS Connector / IGCSDOF.";
+extern "C" const char *DESCRIPTION = "Universal queued Named Pipe camera-provider bridge for IGCSDOF / Parallax DOF.";
 
 namespace {
 HMODULE g_selfModule = nullptr;
@@ -37,21 +37,31 @@ void tableStatus(
     tableLine(label, ok ? okText : badText);
 }
 
+const char *dofStatusText(bridge::DofBackend backend, bridge::DofBackend selected) {
+    if (!bridge::isDofBackendDetected(backend)) return "Not found";
+    if (!bridge::isDofBackendConnected(backend)) return "Detected / not connected";
+    return backend == selected ? "Active" : "Ready";
+}
+
 float calculateLabelColumnWidth() {
-    static constexpr std::array<const char *, 14> kLabels = {
+    static constexpr std::array<const char *, 18> kLabels = {
         "Provider",
         "Engine",
         "Camera mode",
+        "DOF backend",
+        "IGCSDOF addon",
+        "Parallax DOF addon",
         "Status",
         "Provider status",
         "Provider ready",
         "Camera channel",
         "Command channel",
         "Camera data",
-        "IGCS Connector",
+        "DOF consumer",
         "IGCS command exports",
         "Session",
-        "Protocol / Bridge",
+        "Version",
+        "Protocol",
         "Position"
     };
 
@@ -136,6 +146,47 @@ void displaySettings(reshade::api::effect_runtime *) {
         ImGui::EndTable();
     }
 
+    ImGui::SeparatorText("DOF Integration");
+
+    bridge::DofBackend selectedBackend = bridge::selectedDofBackend();
+    int selectedBackendIndex = selectedBackend == bridge::DofBackend::Parallax ? 1 : 0;
+    const char *backendItems[] = { "IGCSDOF", "Parallax DOF" };
+
+    if (s.sessionActive.load()) ImGui::BeginDisabled();
+    if (ImGui::Combo("Backend", &selectedBackendIndex, backendItems, 2)) {
+        bridge::selectDofBackend(
+            selectedBackendIndex == 1
+                ? bridge::DofBackend::Parallax
+                : bridge::DofBackend::IgcsDof
+        );
+        selectedBackend = bridge::selectedDofBackend();
+    }
+    if (s.sessionActive.load()) ImGui::EndDisabled();
+
+    if (s.sessionActive.load()) {
+        ImGui::TextDisabled("Finish the current screenshot session before switching DOF backend.");
+    } else {
+        ImGui::TextDisabled("Both detected DOF addons stay connected; switching is immediate.");
+    }
+
+    if (ImGui::BeginTable(
+            "IGCSDOFBridgeDofIntegration",
+            2,
+            ImGuiTableFlags_SizingStretchProp
+        )) {
+        setupStatusColumns(labelColumnWidth);
+        tableLine("DOF backend", bridge::dofBackendDisplayName(selectedBackend));
+        tableLine(
+            "IGCSDOF addon",
+            dofStatusText(bridge::DofBackend::IgcsDof, selectedBackend)
+        );
+        tableLine(
+            "Parallax DOF addon",
+            dofStatusText(bridge::DofBackend::Parallax, selectedBackend)
+        );
+        ImGui::EndTable();
+    }
+
     ImGui::SeparatorText("Connection");
 
     if (ImGui::BeginTable(
@@ -183,10 +234,10 @@ void displaySettings(reshade::api::effect_runtime *) {
             "Unavailable"
         );
         tableStatus(
-            "IGCS Connector",
+            "DOF consumer",
             s.igcsConnected,
-            "Connected",
-            "Not found"
+            "Selected backend ready",
+            "Selected backend unavailable"
         );
 
         const bool exportStart =
@@ -219,11 +270,12 @@ void displaySettings(reshade::api::effect_runtime *) {
         )) {
         setupStatusColumns(labelColumnWidth);
 
-        tableLine(
-            "Session",
-            s.sessionActive ? "Rendering" : "Idle"
-        );
-        tableLine("Protocol / Bridge", "v1 / 0.6.8");
+        const std::string sessionDisplay = s.sessionActive.load()
+            ? std::string("Rendering - ") + bridge::dofBackendDisplayName(selectedBackend)
+            : "Idle";
+        tableLine("Session", sessionDisplay.c_str());
+        tableLine("Version", "0.6.9");
+        tableLine("Protocol", "v1");
 
         if (s.cameraValid) {
             char position[128]{};
@@ -254,7 +306,6 @@ void displaySettings(reshade::api::effect_runtime *) {
         ImGui::Spacing();
         ImGui::TextWrapped("Last error: %s", error.c_str());
     }
-
 }
 
 void onPresent(reshade::api::effect_runtime *) { bridge::publishCameraData(); }

@@ -1,6 +1,50 @@
-# IGCSDOF Universal Bridge v0.6.8
+# IGCSDOF Universal Bridge v0.6.9
 
-Universal Bridge + Cheat Engine RAW provider reference.
+Universal ReShade bridge for external camera providers, with selectable support for **IGCSDOF** and **MARTY'S MODS Parallax DOF**.
+
+## DOF backend selection
+
+IGCS Relay can keep both supported DOF addons loaded at the same time:
+
+```text
+IGCSRelay.addon32 / IGCSRelay.addon64
+IgcsConnector.addon32 / IgcsConnector.addon64
+MartysMods_ParallaxDOF.addon32 / MartysMods_ParallaxDOF.addon64
+```
+
+Open the Relay overlay and choose the backend under **DOF Integration**:
+
+```text
+Backend: IGCSDOF
+```
+
+or:
+
+```text
+Backend: Parallax DOF
+```
+
+Both detected addons stay connected. Only the selected backend receives an enabled camera; the other remains ready and can be selected immediately after the current screenshot session ends.
+
+If a screenshot session is started directly from IGCSDOF or Parallax DOF, the Relay automatically detects which addon started it and marks that backend as active.
+
+Typical status display:
+
+```text
+IGCSDOF addon      Active
+Parallax DOF addon Ready
+```
+
+or:
+
+```text
+IGCSDOF addon      Ready
+Parallax DOF addon Active
+```
+
+Backend switching is disabled while a screenshot session is rendering.
+
+See [docs/DOF_BACKENDS.md](docs/DOF_BACKENDS.md) for the complete backend workflow and troubleshooting notes.
 
 ## Rule for new camera integrations
 
@@ -142,7 +186,7 @@ cameraLockSymbol = ""
 writers = {}
 ```
 
-The Relay normalizes the native Forward vector, reconstructs an orthonormal Right/Up/Forward basis, and performs multishot movement strictly in the camera Right/Up plane. This removes the Forward leakage that caused focus-plane blur during U/D movement.
+The Relay normalizes the native Forward vector, reconstructs an orthonormal Right/Up/Forward basis, and performs multishot movement strictly in the camera Right/Up plane. This removes Forward leakage during U/D movement.
 
 The current idTech6 multishot path uses the validated DOOM bokeh scale of `2.0`.
 
@@ -178,7 +222,7 @@ DmC and DOOM Eternal contain the current provider configuration for their engine
 
 CONTROL remains the validated Northlight reference.
 
-DOOM 2016 is currently documented through the idTech6 configuration above; a dedicated reference CT can be added once its remaining FOV/roll work is finalized.
+DOOM 2016 is documented through the idTech6 configuration above; a dedicated reference CT can be added once its remaining FOV/roll work is finalized.
 
 ## Build
 
@@ -188,4 +232,4 @@ scripts\Build-x86.cmd
 scripts\Build-x64.cmd
 ```
 
-GitHub Actions builds can also be launched manually with **Run workflow** on the branch to test, then repeated on `main` after merge.
+GitHub Actions builds can also be launched manually with **Run workflow**.

@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.6.9 — Selectable DOF backends
+
+### DOF integration
+
+- Added support for both **IGCSDOF** and **MARTY'S MODS Parallax DOF**.
+- Both compatible DOF addons may stay loaded and connected at the same time.
+- Added an overlay selector to choose which DOF backend receives the active camera.
+- The inactive backend remains connected but receives a disabled camera state.
+- Switching between IGCSDOF and Parallax DOF is immediate when no screenshot session is active.
+- Starting a screenshot session from either addon automatically makes that addon the active backend.
+- Overlay now reports `Active`, `Ready`, `Detected / not connected`, or `Not found` per backend.
+- Screenshot-session switching is locked until the current session finishes.
+
+### Compatibility
+
+- Existing IGCS command exports are unchanged.
+- Provider protocol remains v1.
+- No camera-basis, engine-profile, multishot, panorama, or bokeh math was changed in this release.
+
+## v0.6.8 — idTech6 / DOOM 2016
+
+- Added the dedicated idTech6 engine profile used by DOOM 2016.
+- Added native Forward-vector handling and Relay-side basis reconstruction.
+- Added DOOM 2016 reference configuration/documentation.
+- No provider protocol change.
+
 ## v0.6.7 — Release cleanup
 
 ### Universal RAW provider v6

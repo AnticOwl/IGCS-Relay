@@ -1,9 +1,11 @@
 #include "Protocol.h"
 #include "NamedPipeServer.h"
 #include "BridgeState.h"
+#include "IgcsConnectorLink.h"
 #include <format>
 #include <mutex>
 #include <cmath>
+#include <intrin.h>
 
 #ifdef _M_IX86
 #pragma comment(linker, "/EXPORT:IGCS_StartScreenshotSession=_IGCS_StartScreenshotSession")
@@ -14,6 +16,11 @@
 
 
 extern "C" __declspec(dllexport) bridge::SessionStartCode __cdecl IGCS_StartScreenshotSession(std::uint8_t type) {
+    // IGCSDOF and Parallax both call the same IGCS exports. Resolve the
+    // originating addon from the caller address so the Relay follows the DOF
+    // backend that actually starts the screenshot session.
+    bridge::selectDofBackendFromCallerAddress(_ReturnAddress());
+
     auto &s = bridge::state();
     if (!s.providerConnected || !s.cameraValid) return bridge::SessionStartCode::CameraFeatureNotAvailable;
     if (!s.camera.cameraEnabled) return bridge::SessionStartCode::CameraNotEnabled;
