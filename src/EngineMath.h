@@ -10,7 +10,8 @@ enum class EngineProfile {
     Unreal4,
     IdTech6,
     IdTech7,
-    Northlight
+    Northlight,
+    Rage
 };
 
 enum class CameraInputMode {
