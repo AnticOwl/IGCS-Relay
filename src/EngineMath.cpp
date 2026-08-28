@@ -43,6 +43,11 @@ EngineProfile engineProfileFromTag(const std::string &tag) {
     if (value == "NORTHLIGHT" || value == "NORTHLIGHT ENGINE") {
         return EngineProfile::Northlight;
     }
+    if (value == "RAGE" || value == "RAGE ENGINE" ||
+        value == "MAX PAYNE 3" || value == "MAXPAYNE3" ||
+        value == "MP3") {
+        return EngineProfile::Rage;
+    }
     return EngineProfile::Normalized;
 }
 
@@ -58,6 +63,8 @@ const char *engineProfileDisplayName(EngineProfile profile) {
         return "idTech 7";
     case EngineProfile::Northlight:
         return "Northlight";
+    case EngineProfile::Rage:
+        return "RAGE / Max Payne 3";
     default:
         return "Provider normalized";
     }
@@ -67,7 +74,8 @@ float rawAngleToRadians(float value, EngineProfile profile) {
     if (profile == EngineProfile::UnrealLegacy) {
         return value * (2.0f * kPi / kLegacyUnitsPerTurn);
     }
-    if (profile == EngineProfile::Unreal4) {
+    if (profile == EngineProfile::Unreal4 ||
+        profile == EngineProfile::Rage) {
         return value * (kPi / 180.0f);
     }
     return value;
@@ -78,7 +86,8 @@ float radiansToRawAngle(float value, EngineProfile profile) {
         return value * (kLegacyUnitsPerTurn / (2.0f * kPi));
     }
     if (profile == EngineProfile::Unreal4 ||
-        profile == EngineProfile::IdTech7) {
+        profile == EngineProfile::IdTech7 ||
+        profile == EngineProfile::Rage) {
         return value * (180.0f / kPi);
     }
     return value;
@@ -221,6 +230,17 @@ CameraToolsData buildCameraToolsData(
         roll = -raw.roll;
     }
 
+    // RAGE / Max Payne 3 raw convention used by the Photo Mode provider:
+    //   pitch = X, roll = Y, yaw = Z, all in degrees.
+    //   Zero rotation is treated as Forward +X, Right +Y, Up +Z.
+    // The first live test should validate handedness/signs. If one axis is
+    // mirrored, only this profile will be adjusted; other engines stay intact.
+    if (profile == EngineProfile::Rage) {
+        pitch = raw.pitch * (kPi / 180.0f);
+        yaw = raw.yaw * (kPi / 180.0f);
+        roll = raw.roll * (kPi / 180.0f);
+    }
+
     const float cp = std::cos(pitch);
     const float sp = std::sin(pitch);
     const float cy = std::cos(yaw);
@@ -228,7 +248,7 @@ CameraToolsData buildCameraToolsData(
     const float cr = std::cos(roll);
     const float sr = std::sin(roll);
 
-    // Same Unreal basis convention validated in the existing CE providers.
+    // Shared +X Forward / +Y Right / +Z Up Euler basis.
     data.rotationMatrixRightVector.values[0] = cy * sr * sp - cr * sy;
     data.rotationMatrixRightVector.values[1] = sy * sr * sp + cr * cy;
     data.rotationMatrixRightVector.values[2] = -sr * cp;
