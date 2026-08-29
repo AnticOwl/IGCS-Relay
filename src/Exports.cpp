@@ -29,7 +29,8 @@ extern "C" __declspec(dllexport) bridge::SessionStartCode __cdecl IGCS_StartScre
     const bool needsFreshRawBase =
         s.cameraInputMode == bridge::CameraInputMode::RawEuler &&
         (s.engineProfile == bridge::EngineProfile::IdTech7 ||
-         s.engineProfile == bridge::EngineProfile::Northlight);
+         s.engineProfile == bridge::EngineProfile::Northlight ||
+         s.engineProfile == bridge::EngineProfile::Rage);
 
     {
         std::scoped_lock lock(s.mutex);
@@ -114,16 +115,6 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr,
 
         // -----------------------------------------------------------------
         // DOOM 2016 / idTech 6
-        //
-        // The universal CE provider sends the native Forward vector through
-        // the three RAW rotation slots:
-        //   pitch = Forward X
-        //   yaw   = Forward Y
-        //   roll  = Forward Z
-        //
-        // EngineMath reconstructs a strict orthonormal Right/Up/Forward
-        // basis from that native vector. This keeps U/D and L/R movement in
-        // the camera plane and removes any Forward component from samples.
         // -----------------------------------------------------------------
         if (s.engineProfile == bridge::EngineProfile::IdTech6) {
             constexpr float kDoom2016BokehScale = 2.0f;
@@ -155,18 +146,6 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr,
 
         // -----------------------------------------------------------------
         // DOOM Eternal / idTech 7
-        //
-        // Keep this path deliberately separate from the generic RAW path.
-        // It mirrors the previously validated CE Lua implementation exactly:
-        //
-        //   lr = stepLR * 2.0
-        //   ud = stepUD * 2.0
-        //   pitch = radians(-rawPitch)
-        //   yaw   = radians(90 - rawYaw)
-        //   roll  = radians(rawRoll)
-        //
-        // Then:
-        //   position = base + Right * lr + Up * ud
         // -----------------------------------------------------------------
         if (s.engineProfile == bridge::EngineProfile::IdTech7) {
             constexpr float kPi = 3.14159265358979323846f;
@@ -207,17 +186,6 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr,
 
         // -----------------------------------------------------------------
         // Northlight / CONTROL
-        //
-        // Validated legacy CONTROL Lua behavior:
-        //   raw Pitch/Yaw/Roll are radians
-        //   Forward zero = +X
-        //   Right zero   = +Y
-        //   Up zero      = +Z
-        //   lr = stepLR * 0.007
-        //   ud = stepUD * 0.007
-        //
-        // buildCameraToolsData() reconstructs the Northlight basis and
-        // handles the validated positive-roll convention.
         // -----------------------------------------------------------------
         if (s.engineProfile == bridge::EngineProfile::Northlight) {
             constexpr float kNorthlightDofScale = 0.007f;
@@ -247,7 +215,7 @@ extern "C" __declspec(dllexport) void __cdecl IGCS_MoveCameraMultishot(float lr,
             return;
         }
 
-        // Generic RAW path for UE2.5 / UE3 / UE4. Unchanged.
+        // Generic RAW path for UE2.5 / UE3 / UE4 / RAGE.
         const CameraToolsData basis =
             bridge::buildCameraToolsData(base, s.engineProfile);
 
