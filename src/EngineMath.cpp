@@ -74,8 +74,7 @@ float rawAngleToRadians(float value, EngineProfile profile) {
     if (profile == EngineProfile::UnrealLegacy) {
         return value * (2.0f * kPi / kLegacyUnitsPerTurn);
     }
-    if (profile == EngineProfile::Unreal4 ||
-        profile == EngineProfile::Rage) {
+    if (profile == EngineProfile::Unreal4 || profile == EngineProfile::Rage) {
         return value * (kPi / 180.0f);
     }
     return value;
@@ -104,21 +103,6 @@ CameraToolsData buildCameraToolsData(
     data.coordinates.values[1] = raw.y;
     data.coordinates.values[2] = raw.z;
 
-    // -----------------------------------------------------------------
-    // DOOM 2016 / idTech 6 native-basis convention.
-    //
-    // To keep the CE provider core universal, the existing three RAW
-    // rotation slots carry the native Forward vector for this profile:
-    //
-    //   raw.pitch = Forward X
-    //   raw.yaw   = Forward Y
-    //   raw.roll  = Forward Z
-    //
-    // DOOM 2016 Photo Mode has no native roll. Right is horizontal and
-    // can therefore be reconstructed from Forward, then Up is built with
-    // a strict cross product. This keeps every multishot displacement in
-    // the camera Right/Up plane and removes Forward leakage on U/D moves.
-    // -----------------------------------------------------------------
     if (profile == EngineProfile::IdTech6) {
         float fx = raw.pitch;
         float fy = raw.yaw;
@@ -136,19 +120,15 @@ CameraToolsData buildCameraToolsData(
         }
 
         const float horizontal = std::sqrt(fx * fx + fy * fy);
-
         float rx = 0.0f;
         float ry = 1.0f;
         float rz = 0.0f;
 
         if (horizontal > 0.000001f) {
-            // Validated DOOM 2016 handedness:
-            // Right = (ForwardY, -ForwardX, 0) at zero roll.
             rx = fy / horizontal;
             ry = -fx / horizontal;
         }
 
-        // Up = Right x Forward.
         float ux = ry * fz - rz * fy;
         float uy = rz * fx - rx * fz;
         float uz = rx * fy - ry * fx;
@@ -164,7 +144,6 @@ CameraToolsData buildCameraToolsData(
             uz = 1.0f;
         }
 
-        // Rebuild Right from Forward x Up to guarantee an orthonormal basis.
         rx = fy * uz - fz * uy;
         ry = fz * ux - fx * uz;
         rz = fx * uy - fy * ux;
@@ -179,11 +158,9 @@ CameraToolsData buildCameraToolsData(
         data.rotationMatrixRightVector.values[0] = rx;
         data.rotationMatrixRightVector.values[1] = ry;
         data.rotationMatrixRightVector.values[2] = rz;
-
         data.rotationMatrixUpVector.values[0] = ux;
         data.rotationMatrixUpVector.values[1] = uy;
         data.rotationMatrixUpVector.values[2] = uz;
-
         data.rotationMatrixForwardVector.values[0] = fx;
         data.rotationMatrixForwardVector.values[1] = fy;
         data.rotationMatrixForwardVector.values[2] = fz;
@@ -192,10 +169,52 @@ CameraToolsData buildCameraToolsData(
         data.lookQuaternion.values[1] = 0.0f;
         data.lookQuaternion.values[2] = 0.0f;
         data.lookQuaternion.values[3] = 1.0f;
-
         data.pitch = std::atan2(fz, horizontal);
         data.yaw = std::atan2(fy, fx);
         data.roll = 0.0f;
+        data.fov = raw.fov;
+        return data;
+    }
+
+    // Max Payne 3 uses the exact camera basis already used by the Photo Mode:
+    //   euler.x = pitch, euler.y = roll, euler.z = yaw (degrees)
+    //   quaternion = Rz(yaw) * Rx(pitch) * Ry(roll)
+    //   local Right   = +X
+    //   local Forward = +Y
+    //   local Up      = +Z
+    // Reproduce that basis here instead of treating RAGE like Unreal.
+    if (profile == EngineProfile::Rage) {
+        const float pitch = raw.pitch * (kPi / 180.0f);
+        const float yaw = raw.yaw * (kPi / 180.0f);
+        const float roll = raw.roll * (kPi / 180.0f);
+
+        const float cp = std::cos(pitch);
+        const float sp = std::sin(pitch);
+        const float cy = std::cos(yaw);
+        const float sy = std::sin(yaw);
+        const float cr = std::cos(roll);
+        const float sr = std::sin(roll);
+
+        // Rz(yaw) * Rx(pitch) * Ry(roll), columns are Right / Forward / Up.
+        data.rotationMatrixRightVector.values[0] = cr * cy - sp * sr * sy;
+        data.rotationMatrixRightVector.values[1] = cr * sy + sp * sr * cy;
+        data.rotationMatrixRightVector.values[2] = -sr * cp;
+
+        data.rotationMatrixForwardVector.values[0] = -sy * cp;
+        data.rotationMatrixForwardVector.values[1] = cy * cp;
+        data.rotationMatrixForwardVector.values[2] = sp;
+
+        data.rotationMatrixUpVector.values[0] = sp * sy * cr + sr * cy;
+        data.rotationMatrixUpVector.values[1] = -sp * cy * cr + sr * sy;
+        data.rotationMatrixUpVector.values[2] = cp * cr;
+
+        data.lookQuaternion.values[0] = 0.0f;
+        data.lookQuaternion.values[1] = 0.0f;
+        data.lookQuaternion.values[2] = 0.0f;
+        data.lookQuaternion.values[3] = 1.0f;
+        data.pitch = pitch;
+        data.yaw = yaw;
+        data.roll = roll;
         data.fov = raw.fov;
         return data;
     }
@@ -204,41 +223,16 @@ CameraToolsData buildCameraToolsData(
     float yaw = rawAngleToRadians(raw.yaw, profile);
     float roll = rawAngleToRadians(raw.roll, profile);
 
-    // DOOM Eternal / idTech 7 validated convention.
     if (profile == EngineProfile::IdTech7) {
-        // idTech 7 Photo Mode stores Pitch/Yaw/Roll as degrees.
         pitch = -raw.pitch * (kPi / 180.0f);
         yaw = (90.0f - raw.yaw) * (kPi / 180.0f);
         roll = raw.roll * (kPi / 180.0f);
     }
 
-    // Northlight / CONTROL validated raw convention:
-    //   yaw, pitch, roll are already radians.
-    //   Forward at zero = +X
-    //   Right   at zero = +Y
-    //   Up      at zero = +Z
-    //
-    // The validated CONTROL Lua applies positive roll with:
-    //   Right' = Right*cos(r) + Up*sin(r)
-    //   Up'    = Up*cos(r) - Right*sin(r)
-    //
-    // The generic basis formula below uses the opposite roll sign,
-    // therefore negate raw roll for Northlight before evaluating it.
     if (profile == EngineProfile::Northlight) {
         pitch = raw.pitch;
         yaw = raw.yaw;
         roll = -raw.roll;
-    }
-
-    // RAGE / Max Payne 3 raw convention used by the Photo Mode provider:
-    //   pitch = X, roll = Y, yaw = Z, all in degrees.
-    //   Zero rotation is treated as Forward +X, Right +Y, Up +Z.
-    // The first live test should validate handedness/signs. If one axis is
-    // mirrored, only this profile will be adjusted; other engines stay intact.
-    if (profile == EngineProfile::Rage) {
-        pitch = raw.pitch * (kPi / 180.0f);
-        yaw = raw.yaw * (kPi / 180.0f);
-        roll = raw.roll * (kPi / 180.0f);
     }
 
     const float cp = std::cos(pitch);
@@ -248,7 +242,6 @@ CameraToolsData buildCameraToolsData(
     const float cr = std::cos(roll);
     const float sr = std::sin(roll);
 
-    // Shared +X Forward / +Y Right / +Z Up Euler basis.
     data.rotationMatrixRightVector.values[0] = cy * sr * sp - cr * sy;
     data.rotationMatrixRightVector.values[1] = sy * sr * sp + cr * cy;
     data.rotationMatrixRightVector.values[2] = -sr * cp;
@@ -261,12 +254,10 @@ CameraToolsData buildCameraToolsData(
     data.rotationMatrixForwardVector.values[1] = cp * sy;
     data.rotationMatrixForwardVector.values[2] = sp;
 
-    // Quaternion is not required by the current IGCS DoF path.
     data.lookQuaternion.values[0] = 0.0f;
     data.lookQuaternion.values[1] = 0.0f;
     data.lookQuaternion.values[2] = 0.0f;
     data.lookQuaternion.values[3] = 1.0f;
-
     data.pitch = pitch;
     data.yaw = yaw;
     data.roll = roll;
