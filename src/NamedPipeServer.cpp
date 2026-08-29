@@ -97,7 +97,6 @@ void parseHello(const std::vector<std::string> &parts) {
 }
 
 void parseCamera(const std::vector<std::string> &p) {
-    // CAMERA|valid|enabled|locked|x|y|z|qx|qy|qz|qw|rx|ry|rz|ux|uy|uz|fx|fy|fz|pitchRad|yawRad|rollRad|fov
     if (p.size() < 24) return;
 
     CameraToolsData data{};
@@ -136,9 +135,7 @@ void parseCamera(const std::vector<std::string> &p) {
     refreshProviderReadyState();
 }
 
-
 void parseCameraRaw(const std::vector<std::string> &p) {
-    // CAMERA_RAW|valid|enabled|locked|x|y|z|pitch|yaw|roll|fov
     if (p.size() < 11) return;
 
     RawCameraData raw{};
@@ -165,7 +162,8 @@ void parseCameraRaw(const std::vector<std::string> &p) {
         s.lastError.clear();
 
         if ((s.engineProfile == EngineProfile::IdTech7 ||
-             s.engineProfile == EngineProfile::Northlight) &&
+             s.engineProfile == EngineProfile::Northlight ||
+             s.engineProfile == EngineProfile::Rage) &&
             s.sessionBaseRefreshPending &&
             raw.valid &&
             raw.locked) {
@@ -236,8 +234,6 @@ void processIncoming(HANDLE pipe, std::string &pending) {
 }
 
 HANDLE createServerPipe(const wchar_t *name) {
-    // PIPE_ACCESS_DUPLEX is intentionally used for Cheat Engine compatibility,
-    // while each channel is logically one-way.
     return CreateNamedPipeW(
         name,
         PIPE_ACCESS_DUPLEX,
@@ -367,7 +363,6 @@ void outputLoop() {
             g_outbound.clear();
         }
 
-        // Clear the internal cancellation flag before accepting a new client.
         s.reconnectRequested = false;
     }
 }
@@ -395,7 +390,6 @@ void startPipeServer() {
     g_inputThread = std::thread(inputLoop);
     g_outputThread = std::thread(outputLoop);
 }
-
 
 void stopPipeServer() {
     auto &s = state();
