@@ -46,15 +46,43 @@ Backend switching is disabled while a screenshot session is rendering.
 
 See [docs/DOF_BACKENDS.md](docs/DOF_BACKENDS.md) for the complete backend workflow and troubleshooting notes.
 
-## Rule for new camera integrations
+## Camera provider methods
 
-Edit **only** the CONFIG block in:
+IGCS Relay includes two generic Cheat Engine provider templates. Choose whichever method fits the table you are adapting.
+
+### Automatic Memory Record detection
+
+```text
+examples/Generic_RAW_Provider_Auto.lua
+```
+
+This provider reads the camera values directly from existing Cheat Engine Memory Records and lets Cheat Engine resolve their final addresses.
+
+The table should expose camera records using these simple descriptions:
+
+```text
+Camera X   or X
+Camera Y   or Y
+Camera Z   or Z
+Pitch
+Yaw
+Roll
+FOV
+```
+
+The records may use direct addresses, registered symbols, pointer records, multi-level pointer chains, or different chains for position, rotation and FOV. The provider uses the final address already resolved by Cheat Engine, so pointer chains do not need to be copied into the IGCS script.
+
+Only the Relay engine profile still needs to be selected in the provider configuration.
+
+### Manual configuration
 
 ```text
 examples/Generic_RAW_Provider.lua
 ```
 
-Everything below:
+This provider uses an explicit CONFIG block containing camera bases and offsets. It is useful when you prefer to define the layout manually or when a table does not expose suitable Memory Records for automatic detection.
+
+Edit **only** the CONFIG block. Everything below:
 
 ```text
 END USER CONFIGURATION
@@ -66,7 +94,7 @@ Engine-specific camera-basis math belongs in the Relay, not in the CE provider.
 
 ## Multi-base resolver
 
-Each data group selects its own base:
+The manual provider allows each data group to select its own base:
 
 ```lua
 bases = {
