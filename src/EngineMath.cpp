@@ -27,7 +27,9 @@ EngineProfile engineProfileFromTag(const std::string &tag) {
         return EngineProfile::UnrealLegacy;
     }
     if (value == "UE4" || value == "UNREAL4" ||
-        value == "UNREAL ENGINE 4") {
+        value == "UNREAL ENGINE 4" ||
+        value == "UE5" || value == "UNREAL5" ||
+        value == "UNREAL ENGINE 5") {
         return EngineProfile::Unreal4;
     }
     if (value == "DOOM_2016" || value == "DOOM 2016" ||
@@ -51,7 +53,7 @@ const char *engineProfileDisplayName(EngineProfile profile) {
     case EngineProfile::UnrealLegacy:
         return "Unreal Engine 2.5 / 3";
     case EngineProfile::Unreal4:
-        return "Unreal Engine 4";
+        return "Unreal Engine 4 / 5";
     case EngineProfile::IdTech6:
         return "idTech 6";
     case EngineProfile::IdTech7:
