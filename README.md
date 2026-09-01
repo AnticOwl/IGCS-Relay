@@ -154,10 +154,13 @@ No pointer chain is duplicated in IGCS.
 UE2.5      integer Unreal Rotator
 UE3        integer Unreal Rotator
 UE4        float-degree rotation
+UE5        UE4-compatible degree rotation math
 idTech6    native Forward vector packed in RAW rotation slots
 idTech7    float-degree rotation
 Northlight float-radian rotation
 ```
+
+`UE5` is a distinct provider tag but currently resolves to the same camera-basis math as `UE4`. This keeps UE5 providers cleanly identified while allowing UE5-specific behavior to be introduced later without changing existing tables.
 
 ## idTech6 / DOOM 2016
 
@@ -236,7 +239,7 @@ configured camera writer NOPs
 250 ms restore hold
 ```
 
-UE2.5 / UE3 / UE4 / idTech6 / Northlight ignore the idTech7 writer list.
+UE2.5 / UE3 / UE4 / UE5 / idTech6 / Northlight ignore the idTech7 writer list.
 
 ## Reference CTs
 
