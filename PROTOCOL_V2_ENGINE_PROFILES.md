@@ -70,6 +70,29 @@ Do not call `math.deg()` on a UE4 FOV value that is already stored in degrees.
 A raw FOV around 62.5 must be sent as approximately 62.5, not converted as
 radians.
 
+## UE5
+
+HELLO tag:
+
+```text
+Engine=UE5
+```
+
+UE5 currently uses the same camera-basis math as the UE4 profile.
+The tag remains distinct so UE5-specific behavior can be added later without
+changing existing providers.
+
+Raw values are interpreted using the same angular convention as UE4:
+
+```text
+Pitch/Yaw/Roll  degrees
+FOV             degrees
+```
+
+The provider may read engine-specific memory types such as doubles and must send
+the resulting numeric values through the RAW protocol. The Relay camera math is
+the same as UE4.
+
 ## idTech7
 
 HELLO tag:
